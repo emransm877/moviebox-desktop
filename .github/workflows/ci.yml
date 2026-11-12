@@ -1,0 +1,27 @@
+name: Windows checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m venv .venv
+      - run: .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+      - run: .\.venv\Scripts\python.exe -m unittest test_service test_transport test_native_regressions test_native_captions test_subtitle_store test_audio_options
+      - run: .\.venv\Scripts\python.exe -m compileall -q main.py fluent_ui.py interactions.py subtitle_store.py audio_options.py
+      - name: Build native application
+        shell: powershell
+        run: ./build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MovieBox-Desktop-Windows-x64
+          path: dist/MovieBox/

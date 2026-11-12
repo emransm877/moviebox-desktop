@@ -1,0 +1,25 @@
+MovieBox Desktop Preview uses Python, PySide6/Qt, Qt Multimedia and FFmpeg through
+their installed Windows binary distributions, and PyInstaller for packaging.
+
+The release's licenses directory includes upstream license texts, distribution
+notices and a dependency version manifest. The top-level MIT license covers
+original project code; it does not replace dependency licenses or grant rights
+to MovieBox branding, catalog artwork or media.
+
+PySide6 and Qt are dynamically linked. PySide6 is offered under LGPLv3/GPLv3 or
+commercial terms by The Qt Company. Their upstream license texts and source are
+available at https://www.qt.io/licensing/open-source-lgpl-obligations and
+https://code.qt.io/pyside/pyside-setup.git/ .
+
+FFmpeg upstream: https://ffmpeg.org/legal.html . Python: https://docs.python.org/3/license.html .
+PyInstaller: https://pyinstaller.org/en/stable/license.html .
+QR code rendering uses python-qrcode 8.2 (BSD license): https://github.com/lincolnloop/python-qrcode .
+
+The catalog, artwork, media URLs and streaming service belong to their respective
+owners. This build is an independent local reconstruction. The inspected official
+MovieBox Windows wrapper's source is not copied into this application.
+
+The Sintel trailer used for local playback verification belongs to the Blender
+Foundation and is licensed under Creative Commons Attribution 3.0.
+Source: https://download.blender.org/durian/trailer/sintel_trailer-1080p.mp4
+It is not bundled with the application.
