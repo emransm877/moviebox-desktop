@@ -21,7 +21,22 @@ jobs:
       - name: Build native application
         shell: powershell
         run: ./build.ps1
+      - name: Build installable setup EXE
+        shell: powershell
+        run: |
+          $toolInstaller = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.1-x64.exe'
+          $toolDirectory = Join-Path $env:RUNNER_TEMP 'MovieBoxInnoSetup'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe' -OutFile $toolInstaller
+          if ((Get-FileHash -LiteralPath $toolInstaller).Hash -ne '8A5A6711C3766A6E5FB74F280BA0E3551E719CE94538D901FDBD1F8F9920B3F0') { throw 'Compiler download hash mismatch' }
+          if ((Get-AuthenticodeSignature -LiteralPath $toolInstaller).Status -ne 'Valid') { throw 'Compiler signature verification failed' }
+          $toolProcess = Start-Process -FilePath $toolInstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER',"/DIR=$toolDirectory") -WindowStyle Hidden -Wait -PassThru
+          if ($toolProcess.ExitCode -ne 0) { throw 'Compiler installation failed' }
+          ./build-installer.ps1 -Compiler (Join-Path $toolDirectory 'ISCC.exe')
       - uses: actions/upload-artifact@v4
         with:
           name: MovieBox-Desktop-Windows-x64
           path: dist/MovieBox/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MovieBox-Setup-Windows-x64
+          path: dist/installer/*.exe

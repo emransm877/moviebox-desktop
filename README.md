@@ -9,15 +9,22 @@ Launch `MovieBox.exe` from its folder. Keep the `_internal` directory beside it.
 
 ## Download and install
 
-Download `MovieBox-Desktop-0.4.0-windows-x64.zip` from the
-[releases page](https://github.com/emransm877/moviebox-desktop/releases).
-Extract the complete ZIP, open the `MovieBox` folder and launch `MovieBox.exe`.
-For a per-user installation and Desktop/Start menu shortcuts, run `install.ps1`
-from that extracted folder in PowerShell. Administrator access is not required.
-The installed application and shortcuts are named **MovieBox**.
+[**Download Windows setup EXE**](https://github.com/emransm877/moviebox-desktop/releases/latest/download/MovieBox-Setup-0.4.0-windows-x64.exe)
 
-This preview targets Windows 11 x64. It is not Authenticode-signed. Release
-SHA-256 checksums are supplied alongside the ZIP.
+Run the setup EXE to install the complete application, Start menu shortcut and
+optional Desktop shortcut. Python and administrator access are not required.
+Uninstall through Windows Settings; your library/history remain in your user data
+directory. The installed application and shortcuts are named **MovieBox**.
+
+A [portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.4.0)
+is also available. Extract it completely and launch `MovieBox/MovieBox.exe`;
+keep `_internal` beside that executable.
+
+The installer requires Windows 10 version 1809 or later on an x64-compatible
+system. Native playback was exercised on Windows 11 x64; Windows 10 and ARM
+emulation are not separately certified. This is not a macOS, Linux or 32-bit
+Windows package. The preview is not Authenticode-signed; SHA-256 files accompany
+the downloads. Media availability still depends on the upstream service.
 
 ## Included
 
@@ -70,6 +77,8 @@ Run `verify_upgrade.py`, `verify_subtitle_fix.py` or `verify_audio.py` with the
 virtual-environment Python for opt-in live playback/input checks. These contact
 the upstream service and use isolated verification data. Run `./build.ps1` in
 PowerShell to rebuild the Windows executable and dependency notices.
+To build the setup EXE, install Inno Setup 7 and run `build-installer.ps1`, passing
+`-Compiler` with the path to `ISCC.exe` if it is not detected automatically.
 
 The published source excludes local research, account data and captured runtime
 responses. Thirty offline tests cover service transport, subtitle handling and
