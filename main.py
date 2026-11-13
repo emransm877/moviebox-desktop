@@ -12,14 +12,15 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import Future
 from urllib.request import Request, urlopen
 
-from PySide6.QtCore import (Qt, QAbstractListModel, QModelIndex, QSize, QObject, QPoint,
+from PySide6.QtCore import (Qt, QAbstractListModel, QModelIndex, QSize, QObject, QPoint, QRectF, QEvent, QVariantAnimation, QEasingCurve,
                             Signal, QRunnable, QThreadPool, QTimer, QUrl, QStandardPaths, QBuffer, QByteArray, QIODevice)
-from PySide6.QtGui import QColor, QPainter, QPixmap, QFont, QShortcut, QKeySequence, QIcon, QImageReader, QStandardItemModel, QStandardItem, QDesktopServices
+from PySide6.QtGui import QColor, QPainter, QPixmap, QFont, QShortcut, QKeySequence, QIcon, QImageReader, QStandardItemModel, QStandardItem, QDesktopServices, QPen
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QPushButton, QLineEdit, QComboBox, QStackedWidget,
     QListView, QStyledItemDelegate, QSlider, QFrame, QMessageBox, QFileDialog, QStyle, QSpinBox, QListWidget, QListWidgetItem, QSizePolicy, QCheckBox, QCompleter)
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoFrame, QMediaMetaData
 from PySide6.QtMultimediaWidgets import QVideoWidget
+from shiboken6 import isValid
 from service import MovieBoxService, ServiceError, SITE
 from playback import Subtitles, fetch_subtitles, parse_subtitles, measure_mbps, select_quality
 from media_bridge import MediaBridge
@@ -32,7 +33,7 @@ from library_store import LibraryStore
 import release_updates
 from artwork import resized_artwork
 
-APP_VERSION = '0.5.0'
+APP_VERSION = '0.6.0'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -172,6 +173,114 @@ class PosterDelegate(QStyledItemDelegate):
     def __init__(self, artwork, parent):
         super().__init__(parent)
         self.artwork = artwork
+        self.view = parent
+        self.viewport = parent.viewport()
+        self.hover_row = -1
+        self.active_row = -1
+        self.amounts = {}
+        self.starts = {}
+        self.metrics = {'frames': 0, 'maxActiveRows': 0, 'maxFrameMs': 0}
+        self.motion = True
+        if os.name == 'nt':
+            try:
+                import ctypes
+                enabled = ctypes.c_int(1)
+                if ctypes.windll.user32.SystemParametersInfoW(0x1042, 0, ctypes.byref(enabled), 0):
+                    self.motion = bool(enabled.value)
+            except (AttributeError, OSError):
+                pass
+        self.animation = QVariantAnimation(self)
+        self.animation.setDuration(160)
+        self.animation.setStartValue(0.0)
+        self.animation.setEndValue(1.0)
+        self.animation.setEasingCurve(QEasingCurve.OutCubic)
+        self.animation.valueChanged.connect(self.animate_frame)
+        self.viewport.setMouseTracking(True)
+        self.viewport.installEventFilter(self)
+        parent.installEventFilter(self)
+        parent.selectionModel().currentChanged.connect(self.current_changed)
+        parent.model().modelAboutToBeReset.connect(self.clear_focus)
+
+    def eventFilter(self, watched, event):
+        if not isValid(self.view) or not isValid(self.viewport):
+            return False
+        if watched is self.viewport:
+            if event.type() == QEvent.MouseMove:
+                index = self.view.indexAt(event.position().toPoint())
+                self.hover_row = index.row() if index.isValid() else -1
+                self.update_active()
+            elif event.type() == QEvent.Leave:
+                self.hover_row = -1
+                self.update_active()
+        if watched is self.view:
+            if event.type() in (QEvent.FocusIn, QEvent.FocusOut):
+                if event.type() == QEvent.FocusIn:
+                    self.hover_row = -1
+                self.update_active()
+            elif event.type() == QEvent.Hide:
+                self.clear_focus()
+        return False
+
+    def current_changed(self, *_):
+        if isValid(self.view) and self.view.hasFocus():
+            self.hover_row = -1
+        self.update_active()
+
+    def update_active(self):
+        if not isValid(self.view):
+            return
+        current = self.view.currentIndex()
+        target = self.hover_row if self.hover_row >= 0 else current.row() if self.view.hasFocus() and current.isValid() else -1
+        if target == self.active_row:
+            return
+        old_rows = set(self.amounts)
+        previous = self.active_row
+        self.animation.stop()
+        self.active_row = target
+        self.starts = {row: self.amounts.get(row, 0.0) for row in (previous, target) if row >= 0}
+        self.amounts = dict(self.starts)
+        self.repaint_rows(old_rows | set(self.starts))
+        if self.motion:
+            self.animation.start()
+        else:
+            self.animate_frame(1.0)
+
+    def animate_frame(self, fraction):
+        started = time.perf_counter()
+        rows = set(self.amounts) | set(self.starts)
+        self.amounts = {row: initial + (1.0 - initial) * fraction if row == self.active_row else initial * (1.0 - fraction)
+                        for row, initial in self.starts.items()}
+        self.amounts = {row: amount for row, amount in self.amounts.items() if amount > .001}
+        self.metrics['frames'] += 1
+        self.metrics['maxActiveRows'] = max(self.metrics['maxActiveRows'], len(self.amounts))
+        self.repaint_rows(rows)
+        self.metrics['maxFrameMs'] = max(self.metrics['maxFrameMs'], (time.perf_counter() - started) * 1000)
+
+    def repaint_rows(self, rows):
+        if not isValid(self.view) or not isValid(self.viewport):
+            return
+        model = self.view.model()
+        if model is None:
+            return
+        for row in rows:
+            index = model.index(row, 0)
+            if index.isValid():
+                self.viewport.update(self.view.visualRect(index))
+
+    def clear_focus(self):
+        self.animation.stop()
+        rows = set(self.amounts)
+        self.hover_row = self.active_row = -1
+        self.amounts = {}
+        self.starts = {}
+        self.repaint_rows(rows)
+
+    @staticmethod
+    def cover_rect(cell, amount=0):
+        rect = QRectF(cell.adjusted(6, 6, -6, -6))
+        cover = rect.adjusted(0, 0, 0, -66)
+        horizontal, vertical = cover.width() * .0225 * amount, cover.height() * .0225 * amount
+        return cover.adjusted(-horizontal, -vertical, horizontal, vertical)
 
     def sizeHint(self, option, index):
         return QSize(184, 316)
@@ -180,26 +289,31 @@ class PosterDelegate(QStyledItemDelegate):
         item = index.data(Qt.UserRole) or {}
         dark = bool(QApplication.instance().property('movieboxDark'))
         painter.save()
+        painter.setClipRect(option.rect, Qt.IntersectClip)
         painter.setRenderHint(QPainter.Antialiasing)
         rect = option.rect.adjusted(6, 6, -6, -6)
-        cover = rect.adjusted(0, 0, 0, -66)
+        base_cover = self.cover_rect(option.rect)
+        amount = self.amounts.get(index.row(), 0.0)
+        cover = self.cover_rect(option.rect, amount)
         painter.setPen(Qt.NoPen)
         painter.setBrush(QColor('#1a222d' if dark else '#e5ebf2'))
         painter.drawRoundedRect(cover, 12, 12)
         image = self.artwork.get((item.get('cover') or {}).get('url', ''))
         if image:
-            crop = image.scaled(cover.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
             from PySide6.QtGui import QPainterPath
             clip = QPainterPath()
             clip.addRoundedRect(cover, 12, 12)
+            painter.save()
             painter.setClipPath(clip)
-            painter.drawPixmap(cover.x(), cover.y(), crop,
-                (crop.width() - cover.width()) // 2, (crop.height() - cover.height()) // 2,
-                cover.width(), cover.height())
-            painter.setClipping(False)
+            painter.setRenderHint(QPainter.SmoothPixmapTransform)
+            scale = max(cover.width() / image.width(), cover.height() / image.height())
+            width, height = cover.width() / scale, cover.height() / scale
+            source = QRectF((image.width() - width) / 2, (image.height() - height) / 2, width, height)
+            painter.drawPixmap(cover, image, source)
+            painter.restore()
         painter.setPen(QColor('#f1f5fb' if dark else '#182431'))
         painter.setFont(QFont('Segoe UI Variable Text', 10, QFont.DemiBold))
-        title_rect = rect.adjusted(0, cover.height() + 10, 0, -22)
+        title_rect = rect.adjusted(0, int(base_cover.height()) + 10, 0, -22)
         title = painter.fontMetrics().elidedText(item.get('title', ''), Qt.ElideRight, rect.width())
         painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignTop, title)
         painter.setPen(QColor('#91a0b4' if dark else '#647286'))
@@ -208,9 +322,17 @@ class PosterDelegate(QStyledItemDelegate):
         rating = item.get('imdbRatingValue')
         painter.drawText(rect.adjusted(0, rect.height() - 22, 0, 0), Qt.AlignLeft | Qt.AlignVCenter,
                          year + (f'     ★ {rating}' if rating else ''))
-        if option.state & (QStyle.State_MouseOver | QStyle.State_Selected | QStyle.State_HasFocus):
+        highlighted = bool(option.state & (QStyle.State_MouseOver | QStyle.State_Selected | QStyle.State_HasFocus))
+        if highlighted or amount > 0:
             painter.setBrush(Qt.NoBrush)
-            painter.setPen(QColor('#6ee7d2'))
+            if amount > 0:
+                halo = QColor('#48e6b0')
+                halo.setAlpha(round(38 * amount))
+                painter.setPen(QPen(halo, 5))
+                painter.drawRoundedRect(cover, 12, 12)
+            accent = QColor('#48e6b0')
+            accent.setAlpha(round((150 if highlighted else 0) + (105 if highlighted else 255) * amount))
+            painter.setPen(QPen(accent, 1.0 + amount))
             painter.drawRoundedRect(cover, 12, 12)
         painter.restore()
 
@@ -335,6 +457,13 @@ class Window(QMainWindow):
         self.auto_probe_running = False
         self.auto_candidate, self.auto_votes = '', 0
         self.downloads = []
+        self.catalogue_kind = None
+        self.catalogue_page = 1
+        self.catalogue_next_page = 2
+        self.catalogue_selections = self.state.get('catalogue_filters', {})
+        if not isinstance(self.catalogue_selections, dict):
+            self.catalogue_selections = {}
+        self.catalogue_backend = None
         self.download_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='moviebox-download')
         self.build_ui()
         self.build_player()
@@ -686,7 +815,12 @@ class Window(QMainWindow):
         first_subject = next((subject for row in self.sections.values() for subject in row), None)
         if first_subject:
             self.hero.set_subject(first_subject)
-        self.show_discover()
+        active_home = self.nav_buttons['home'].isChecked() or (
+            not any(button.isChecked() for button in self.nav_buttons.values())
+            and self.heading.text() == 'Find your next favorite'
+        )
+        if active_home:
+            self.show_discover()
         self.connection.setText('● Connected')
         self.catalog_ready.emit()
 
@@ -722,6 +856,102 @@ class Window(QMainWindow):
         self.status.setText(f'{len(self.catalog_model.items)} titles · Select a poster to explore')
         self.stack.setCurrentIndex(0)
 
+    def browse_catalogue(self, kind):
+        """Browse the full service catalogue, independently of homepage sections."""
+        if kind not in ('movies', 'series'):
+            return
+        self.stop_for_navigation()
+        from fluent_ui import set_nav
+        from browse_filters import BrowseCatalogue
+        if self.catalogue_backend is None:
+            self.catalogue_backend = BrowseCatalogue(self.api)
+        self.catalogue_kind, self.catalogue_page = kind, 1
+        self.hero.hide()
+        self.search.clear()
+        self.category.hide()
+        self.more.hide()
+        self.heading.setText('Movies' if kind == 'movies' else 'TV Shows')
+        self.page_subtitle.setText('Browse the full catalogue · Choose filters, then Apply')
+        set_nav(self, kind)
+        self.populate_catalogue_filters(kind)
+        self.catalogue_filter_panel.show()
+        self.request_catalogue_page()
+
+    def populate_catalogue_filters(self, kind):
+        options = self.catalogue_backend.options(kind)
+        selected = self.catalogue_selections.get(kind, {})
+        if not isinstance(selected, dict):
+            selected = {}
+        for field, picker in self.catalogue_filter_fields.items():
+            picker.blockSignals(True)
+            picker.clear()
+            for option in options[field]:
+                picker.addItem(option['label'], option['value'])
+            row = picker.findData(selected.get(field))
+            picker.setCurrentIndex(max(0, row))
+            picker.blockSignals(False)
+
+    def apply_catalogue_filters(self):
+        if not self.catalogue_kind:
+            return
+        self.catalogue_selections[self.catalogue_kind] = {
+            name: picker.currentData() for name, picker in self.catalogue_filter_fields.items()
+        }
+        self.state['catalogue_filters'] = self.catalogue_selections
+        self.persist()
+        self.catalogue_page = 1
+        self.request_generation += 1
+        self.request_catalogue_page()
+
+    def reset_catalogue_filters(self):
+        if not self.catalogue_kind:
+            return
+        self.catalogue_selections.pop(self.catalogue_kind, None)
+        self.populate_catalogue_filters(self.catalogue_kind)
+        self.apply_catalogue_filters()
+
+    def request_catalogue_page(self, append=False):
+        kind, page, generation = self.catalogue_kind, self.catalogue_page, self.request_generation
+        selection = dict(self.catalogue_selections.get(kind, {}))
+        self.more.setEnabled(False)
+        self.catalogue_apply.setText('Loading…')
+        if not append:
+            self.show_items([])
+            self.empty.setText('Loading the MovieBox catalogue…')
+            self.more.hide()
+        def done(result):
+            if generation != self.request_generation or kind != self.catalogue_kind:
+                return
+            previous = self.catalog_model.items if append else []
+            seen = {str(item.get('subjectId')) for item in previous}
+            items = previous + [item for item in result['items'] if str(item.get('subjectId')) not in seen]
+            self.show_items(items)
+            self.more.setEnabled(True)
+            self.more.setVisible(result['has_more'])
+            self.more.setText('Load more')
+            self.catalogue_next_page = result['next_page']
+            self.catalogue_apply.setEnabled(True)
+            self.catalogue_apply.setText('Apply filters')
+            self.catalogue_reset.setEnabled(True)
+            labels = {'rate': 'Rating', 'classify': 'Audio'}
+            filters = [f'{labels.get(field, field.title())}: {value}{"+" if field == "rate" else ""}' for field, value in selection.items()
+                       if value not in ('All', 'ForYou', '', None)]
+            self.page_subtitle.setText(' · '.join(filters) if filters else 'Browse the full MovieBox catalogue')
+            if not items:
+                self.empty.setText('No titles match these filters.\nTry another selection or Reset.')
+        def failed(message):
+            if generation != self.request_generation or kind != self.catalogue_kind:
+                return
+            self.more.setEnabled(True)
+            self.catalogue_apply.setEnabled(True)
+            self.catalogue_apply.setText('Apply filters')
+            self.catalogue_reset.setEnabled(True)
+            self.show_error(message)
+            if not append:
+                self.empty.setText('The catalogue could not load.\nUse Apply filters to retry.')
+        self.submit(lambda: self.catalogue_backend.page(kind, selection, page), done,
+                    message='Loading catalogue…', failure=failed)
+
     def run_search(self):
         keyword = self.search.text().strip()
         skip = getattr(self, 'suggestion_skip', ('', 0))
@@ -755,6 +985,10 @@ class Window(QMainWindow):
         self.more.setEnabled(True)
 
     def load_more(self):
+        if self.catalogue_kind:
+            self.catalogue_page = self.catalogue_next_page
+            self.request_catalogue_page(append=True)
+            return
         self.search_page += 1
         page, keyword, generation = self.search_page, self.search_keyword, self.request_generation
         self.more.setEnabled(False)
@@ -1432,6 +1666,9 @@ class Window(QMainWindow):
         self.status.setText('Ready to resume')
 
     def stop_for_navigation(self):
+        self.catalogue_kind = None
+        if hasattr(self, 'catalogue_filter_panel'):
+            self.catalogue_filter_panel.hide()
         self.play_intent += 1
         if getattr(self, 'prebuffering', False):
             self.player.stop()

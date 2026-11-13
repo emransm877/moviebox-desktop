@@ -333,12 +333,15 @@ def set_nav(window, name):
     for key, widget in window.nav_buttons.items():
         widget.setChecked(key == name)
     if hasattr(window, 'breadcrumb'):
-        label = {'home':'Discover','movies':'Movies','series':'TV series','anime':'Anime',
+        label = {'home':'Discover','movies':'Movies','series':'TV Shows','anime':'Anime',
                  'saved':'My list','history':'Continue watching','downloads':'Downloads'}.get(name, 'Search')
         window.breadcrumb.setText('MovieBox  /  ' + label)
 
 
 def browse_kind(window, name):
+    if name in ('movies', 'series'):
+        window.browse_catalogue(name)
+        return
     window.stop_for_navigation()
     set_nav(window, name)
     window.hero.hide()
@@ -446,7 +449,7 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     w.nav_buttons = {}
     entries = [('home','Home','home', w.show_discover),
                ('movies','Movies','movie',lambda: browse_kind(w,'movies')),
-               ('series','TV series','series',lambda: browse_kind(w,'series')),
+               ('series','TV Shows','series',lambda: browse_kind(w,'series')),
                ('anime','Anime','anime',lambda: browse_kind(w,'anime'))]
     for key, text, glyph, callback in entries:
         item = NavButton(text, glyph, callback)
@@ -537,6 +540,44 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     w.more.hide()
     row.addWidget(w.more)
     cat.addLayout(row)
+    w.catalogue_filter_panel = QWidget()
+    filter_layout = QVBoxLayout(w.catalogue_filter_panel)
+    filter_layout.setContentsMargins(0, 0, 0, 0)
+    filter_layout.setSpacing(10)
+    w.catalogue_filter_fields = {}
+    for columns in ((('genre','Genre'),('year','Year'),('country','Country')),
+                    (('classify','Audio / edition'),('sort','Sort by'),('rate','Minimum rating'))):
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(12)
+        for field, label in columns:
+            block = QVBoxLayout()
+            block.setSpacing(4)
+            caption = QLabel(label)
+            caption.setObjectName('muted')
+            block.addWidget(caption)
+            picker = FluentComboBox()
+            picker.setAccessibleName(label)
+            picker.setToolTip('Filter catalogue by ' + label.lower())
+            picker.setMinimumWidth(130)
+            picker.view().setMinimumWidth(240)
+            picker.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+            picker.setMinimumContentsLength(12)
+            picker.addItem('Loading…', '')
+            block.addWidget(picker)
+            w.catalogue_filter_fields[field] = picker
+            filter_row.addLayout(block, 1)
+        filter_layout.addLayout(filter_row)
+    filter_actions = QHBoxLayout()
+    filter_actions.addStretch()
+    w.catalogue_apply = action('Apply filters', w.apply_catalogue_filters, primary=True)
+    w.catalogue_apply.setMinimumWidth(132)
+    w.catalogue_reset = action('Reset', w.reset_catalogue_filters)
+    w.catalogue_reset.setMinimumWidth(84)
+    filter_actions.addWidget(w.catalogue_apply)
+    filter_actions.addWidget(w.catalogue_reset)
+    filter_layout.addLayout(filter_actions)
+    w.catalogue_filter_panel.hide()
+    cat.addWidget(w.catalogue_filter_panel)
     w.catalog_model = catalog_model_type()
     w.grid = QListView()
     w.grid.setModel(w.catalog_model)

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0
+
+- Replace home-feed-only movie/series filtering with separate live Movies and TV
+  Shows catalogue channels and real server pagination.
+- Add combined genre, year, country, audio/edition, sort and minimum-rating
+  selectors, explicit Apply/Reset, keyboard support and per-section preferences.
+- Ignore stale catalogue/home callbacks after navigation; preserve saved titles
+  and all existing playback, subtitle, audio and update behavior.
+- Animate a subtle 160 ms poster focus/hover enlargement and bounded highlight
+  without moving the layout or allocating resized pixmaps on every frame.
+- Document the remaining prior-request gaps in `docs/REQUEST_AUDIT.md`.
+
 ## 0.5.0
 
 - Preserve My list and history across concurrent app instances with locked,

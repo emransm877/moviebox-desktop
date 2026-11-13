@@ -1,6 +1,6 @@
 # MovieBox Desktop App
 
-Independent Windows client · Preview 0.5.0 · Installed app name: **MovieBox**
+Independent Windows client · Preview 0.6.0 · Installed app name: **MovieBox**
 
 A local Windows reconstruction with a native Qt interface and native video player.
 Runs without Android, an emulator, or an embedded MovieBox website.
@@ -9,14 +9,14 @@ Launch `MovieBox.exe` from its folder. Keep the `_internal` directory beside it.
 
 ## Download and install
 
-[**Download Windows setup EXE**](https://github.com/emransm877/moviebox-desktop/releases/latest/download/MovieBox-Setup-0.5.0-windows-x64.exe)
+[**Download Windows setup EXE**](https://github.com/emransm877/moviebox-desktop/releases/latest/download/MovieBox-Setup-0.6.0-windows-x64.exe)
 
 Run the setup EXE to install the complete application, Start menu shortcut and
 optional Desktop shortcut. Python and administrator access are not required.
 Uninstall through Windows Settings; your library/history remain in your user data
 directory. The installed application and shortcuts are named **MovieBox**.
 
-A [portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.5.0)
+A [portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.6.0)
 is also available. Extract it completely and launch `MovieBox/MovieBox.exe`;
 keep `_internal` beside that executable.
 
@@ -29,6 +29,8 @@ the downloads. Media availability still depends on the upstream service.
 ## Included
 
 - Live catalog, categories, database search suggestions, movie details and season/episode buttons for series.
+- Separate full Movies and TV Shows catalogues with live server pagination;
+  combine genre, year, country, language/edition, sorting and minimum-rating filters.
 - Prepared playback on title pages, click-to-seek and keyboard navigation.
 - Native video playback, borderless fullscreen (F11 or double-click), mouse-revealed controls, volume and available audio tracks.
 - Auto quality and manual selection among streams the service makes available.
@@ -74,7 +76,7 @@ python -m venv .venv
 Run the focused offline checks with:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest test_service test_transport test_native_regressions test_native_captions test_subtitle_store test_audio_options test_library_store test_release_updates test_artwork
+.\.venv\Scripts\python.exe -m unittest test_service test_transport test_native_regressions test_native_captions test_subtitle_store test_audio_options test_library_store test_release_updates test_artwork test_browse_filters
 ```
 
 Run `verify_upgrade.py`, `verify_subtitle_fix.py` or `verify_audio.py` with the
@@ -85,7 +87,7 @@ To build the setup EXE, install Inno Setup 7 and run `build-installer.ps1`, pass
 `-Compiler` with the path to `ISCC.exe` if it is not detected automatically.
 
 The published source excludes local research, account data and captured runtime
-responses. Fifty-four offline tests cover service transport, subtitle handling and
+responses. Sixty-two offline tests cover service transport, subtitle handling and
 audio selection. Local native-player checks exercised 1080-tier playback,
 subtitles, seeking, audio switching and resume; these are bounded checks rather
 than certification of every title or network condition.
