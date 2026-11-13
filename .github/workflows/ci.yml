@@ -16,7 +16,7 @@ jobs:
           cache: pip
       - run: python -m venv .venv
       - run: .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-      - run: .\.venv\Scripts\python.exe -m unittest test_service test_transport test_native_regressions test_native_captions test_subtitle_store test_audio_options
+      - run: .\.venv\Scripts\python.exe -m unittest test_service test_transport test_native_regressions test_native_captions test_subtitle_store test_audio_options test_library_store test_release_updates test_artwork
       - run: .\.venv\Scripts\python.exe -m compileall -q main.py fluent_ui.py interactions.py subtitle_store.py audio_options.py
       - name: Build native application
         shell: powershell

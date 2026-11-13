@@ -23,6 +23,12 @@ class AudioOptionsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             matching_runtime(streams[:1],4716)
 
+    def test_street_fighter_three_second_metadata_difference_can_switch(self):
+        streams=[{'resolutions':1080,'duration':7157}]
+        self.assertEqual(matching_runtime(streams,7160), streams)
+        with self.assertRaises(ValueError):
+            matching_runtime([{'duration':6517}],7160)
+
 
 if __name__=='__main__':
     unittest.main()

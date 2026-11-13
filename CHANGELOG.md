@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0
+
+- Preserve My list and history across concurrent app instances with locked,
+  atomic saves, current recovery copies and visible save errors.
+- Keep a valid progress checkpoint when the media engine resets before closing;
+  verify fresh-user playback, two saved titles and relaunch in separate processes.
+- Allow small audio runtime differences, including the three-second Street Fighter
+  metadata difference; offer an explicit restart for genuinely different cuts.
+- Prevent mismatched-quality switches and defer auto quality changes after seeks.
+- Resize service artwork at the verified CDN endpoint before downloading/decoding.
+- Add optional daily GitHub update notices, Later, Skip this version and opt-out;
+  never overlay the player, download automatically or require an update.
+- Include the native Windows setup builder and focused regression checks.
+
 ## 0.4.0
 
 - Add a visible audio-language selector with embedded tracks and actual dubbed

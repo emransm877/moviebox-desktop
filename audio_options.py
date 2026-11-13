@@ -36,6 +36,7 @@ def with_audio(subject, variant):
     result['subjectId'] = str(variant['subjectId'])
     result['_audio_language'] = language_label(variant)
     result['_audio_code'] = variant.get('lanCode') or ''
+    result['_audio_restart_for_cut'] = bool(variant.get('restart_for_cut'))
     return result
 
 
@@ -43,7 +44,14 @@ def matching_runtime(streams, duration_seconds):
     """Never switch into a truncated file or another cut at the same timestamp."""
     if duration_seconds <= 0:
         return streams
-    matching = [stream for stream in streams if abs(float(stream.get('duration') or 0) - duration_seconds) <= 2]
+    tolerance = max(2, min(10, duration_seconds * .001))
+    matching = [stream for stream in streams if abs(float(stream.get('duration') or 0) - duration_seconds) <= tolerance]
     if not matching:
         raise ValueError('This audio edition has a different runtime. Open that edition separately to play it safely.')
     return matching
+
+
+def full_runtime_streams(streams):
+    """For a deliberate edition restart, exclude shorter files of that edition."""
+    duration = max((float(item.get('duration') or 0) for item in streams), default=0)
+    return matching_runtime(streams, duration) if duration else streams

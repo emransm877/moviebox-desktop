@@ -14,7 +14,7 @@ from urllib.request import Request, urlopen
 
 from PySide6.QtCore import (Qt, QAbstractListModel, QModelIndex, QSize, QObject, QPoint,
                             Signal, QRunnable, QThreadPool, QTimer, QUrl, QStandardPaths, QBuffer, QByteArray, QIODevice)
-from PySide6.QtGui import QColor, QPainter, QPixmap, QFont, QShortcut, QKeySequence, QIcon, QImageReader, QStandardItemModel, QStandardItem
+from PySide6.QtGui import QColor, QPainter, QPixmap, QFont, QShortcut, QKeySequence, QIcon, QImageReader, QStandardItemModel, QStandardItem, QDesktopServices
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QPushButton, QLineEdit, QComboBox, QStackedWidget,
     QListView, QStyledItemDelegate, QSlider, QFrame, QMessageBox, QFileDialog, QStyle, QSpinBox, QListWidget, QListWidgetItem, QSizePolicy, QCheckBox, QCompleter)
@@ -27,7 +27,12 @@ from downloads import Download
 from secure_storage import transform as protect_session
 from subtitle_store import SubtitleStore
 from interactions import InputRouter, CinemaWindow
-from audio_options import audio_variants, language_label, with_audio, matching_runtime
+from audio_options import audio_variants, language_label, with_audio, matching_runtime, full_runtime_streams
+from library_store import LibraryStore
+import release_updates
+from artwork import resized_artwork
+
+APP_VERSION = '0.5.0'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -37,16 +42,7 @@ STATE_PATH = DATA / 'library.json'
 
 
 def load_state():
-    try:
-        state = json.loads(STATE_PATH.read_text(encoding='utf-8'))
-        if not isinstance(state, dict):
-            raise ValueError('Invalid library state')
-        for key in ('saved', 'history'):
-            if not isinstance(state.get(key), dict):
-                state[key] = {}
-        return state
-    except (OSError, ValueError):
-        return {'saved': {}, 'history': {}}
+    return LibraryStore(STATE_PATH).load()
 
 
 class Signals(QObject):
@@ -104,7 +100,8 @@ class Artwork(QObject):
                 self.ready(url, data)
 
     @staticmethod
-    def fetch(url):
+    def fetch(url, width=960):
+        url = resized_artwork(url, width)
         path = CACHE / (hashlib.sha256(url.encode()).hexdigest() + '.img')
         if path.exists():
             return path.read_bytes()
@@ -115,7 +112,7 @@ class Artwork(QObject):
 
     @staticmethod
     def fetch_image(url):
-        data = Artwork.fetch(url)
+        data = Artwork.fetch(url, 360)
         buffer = QBuffer()
         buffer.setData(QByteArray(data))
         buffer.open(QIODevice.ReadOnly)
@@ -303,7 +300,9 @@ class Window(QMainWindow):
         except (OSError, ValueError, UnicodeError):
             pass
         self.bridge = MediaBridge()
-        self.state = load_state()
+        self.library_store = LibraryStore(STATE_PATH)
+        self.state = self.library_store.load()
+        self.last_progress_checkpoint = None
         if not self.state.get('subtitle_auto_cache_version'):
             self.state['subtitle_enabled'] = True
             self.state['subtitle_language'] = self.state.get('subtitle_language') or 'en'
@@ -339,6 +338,7 @@ class Window(QMainWindow):
         self.download_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='moviebox-download')
         self.build_ui()
         self.build_player()
+        self.setup_optional_updates()
         self.input_router = InputRouter(self)
         self.video.doubleClicked.connect(self.toggle_fullscreen)
         self.setup_suggestions()
@@ -354,6 +354,78 @@ class Window(QMainWindow):
         QTimer.singleShot(0, self.load_home)
         if self.api.native:
             self.submit(self.api.native.warm_up, lambda result: None, message='', failure=lambda message: None)
+
+    def setup_optional_updates(self):
+        self.update_notice = None
+        self.update_inflight = False
+        self.update_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix='moviebox-updates')
+        self.state.setdefault('update_notifications', {'enabled': True, 'last_checked': 0, 'skipped_version': ''})
+        self.update_banner = QFrame()
+        self.update_banner.setObjectName('controlBar')
+        row = QHBoxLayout(self.update_banner)
+        self.update_label = QLabel()
+        self.update_label.setWordWrap(True)
+        row.addWidget(self.update_label, 1)
+        for label, callback in [('Download update', self.download_optional_update), ('Later', self.dismiss_optional_update), ('Skip this version', self.skip_optional_update)]:
+            button = QPushButton(label)
+            button.clicked.connect(callback)
+            row.addWidget(button)
+        self.content_layout.insertWidget(0, self.update_banner)
+        self.update_banner.hide()
+        self.stack.currentChanged.connect(self.present_optional_update)
+        self.update_timer = QTimer(self)
+        self.update_timer.timeout.connect(self.check_optional_updates)
+        self.update_timer.start(60000)
+        QTimer.singleShot(12000, self.check_optional_updates)
+
+    def check_optional_updates(self, force=False):
+        settings = self.state['update_notifications']
+        self.present_optional_update()
+        if self.update_inflight or not release_updates.check_due(settings, force=force):
+            return
+        self.update_inflight = True
+        future = self.update_pool.submit(release_updates.check_for_update, APP_VERSION, dict(settings), force=force)
+        def ready(result):
+            self.update_inflight = False
+            self.state['update_notifications'] = release_updates.record_result(self.state['update_notifications'], result)
+            self.persist()
+            self.update_notice = result.notice
+            self.present_optional_update()
+            if force and not result.notice:
+                self.status.setText('Update check unavailable. Try again later.' if result.error else 'No newer unskipped MovieBox release is available.')
+        def fail(_):
+            self.update_inflight = False
+        self.await_future(future, ready, fail)
+
+    def present_optional_update(self, *_):
+        allowed = release_updates.notice_is_allowed(self.state['update_notifications'], self.update_notice)
+        show = allowed and self.stack.currentIndex() != 2 and not (self.cinema and self.cinema.isVisible())
+        self.update_banner.setVisible(bool(show))
+        if show:
+            self.update_label.setText(f'MovieBox {self.update_notice.version} is available. Updating is optional.')
+
+    def download_optional_update(self):
+        if release_updates.notice_is_allowed(self.state['update_notifications'], self.update_notice):
+            QDesktopServices.openUrl(QUrl(self.update_notice.download_url))
+        self.dismiss_optional_update()
+
+    def dismiss_optional_update(self):
+        self.update_notice = None
+        self.update_banner.hide()
+
+    def skip_optional_update(self):
+        if self.update_notice:
+            self.state['update_notifications']['skipped_version'] = self.update_notice.version
+            self.persist()
+        self.dismiss_optional_update()
+
+    def configure_optional_updates(self, enabled):
+        self.state['update_notifications']['enabled'] = bool(enabled)
+        self.persist()
+        if not enabled:
+            self.dismiss_optional_update()
+        else:
+            self.check_optional_updates()
 
     def submit(self, fn, done, *, message='Loading…', failure=None):
         future = self.pool.submit(fn)
@@ -531,11 +603,21 @@ class Window(QMainWindow):
         self.audio_switching = True
         self.audio_tracks.setEnabled(False)
         self.status.setText('Preparing ' + language_label(variant) + ' audio…')
-        def ready(streams):
+        def ready(result, restart=False):
             self.audio_switching = False
             if intent != self.audio_switch_intent or self.playing_key != old_key or self.stack.currentIndex() != 2:
                 return
-            position, was_playing = self.player.position(), self.player.isPlaying()
+            streams = result['streams']
+            if not result['same_cut'] and not restart:
+                from PySide6.QtWidgets import QMenu
+                self.populate_audio_tracks()
+                self.status.setText(language_label(variant) + ' is a different cut. Keep this audio, or restart that edition from the beginning.')
+                self.audio_cut_menu = QMenu(self)
+                self.audio_cut_menu.addAction('Restart in ' + language_label(variant), lambda: ready(result, restart=True))
+                self.audio_cut_menu.addAction('Keep current audio')
+                self.audio_cut_menu.popup(self.audio_tracks.mapToGlobal(QPoint(0, self.audio_tracks.height())))
+                return
+            position, was_playing = (0 if restart else self.player.position()), self.player.isPlaying()
             self.save_progress()
             self.playing_subject = target
             self.playing_key = self.selection_key(target, season, episode)
@@ -555,6 +637,7 @@ class Window(QMainWindow):
             self.quality.blockSignals(False)
             base_id = target['_audio_base_id']
             self.state.setdefault('audio_preferences', {})[base_id] = {k: variant[k] for k in ('subjectId','lanName','lanCode','original') if k in variant}
+            self.state['audio_preferences'][base_id]['restart_for_cut'] = restart
             self.persist()
             self.start_video(self.current_stream['url'], position)
             self.resume_paused = not was_playing
@@ -563,12 +646,18 @@ class Window(QMainWindow):
             self.load_captions(target, self.current_stream)
             self.populate_audio_tracks()
             self.now_title.setText(target.get('title','') + (f' · S{season} E{episode}' if season else '') + ' · ' + language_label(variant))
-            self.status.setText(language_label(variant) + ' audio · Keeping your position')
+            self.status.setText(language_label(variant) + (' audio · Different edition started from the beginning' if restart else ' audio · Keeping your position'))
         def fail(message):
             self.audio_switching = False
             self.populate_audio_tracks()
             self.show_error(message)
-        self.submit(lambda: matching_runtime(self.api.playback(target, season, episode), old_duration), ready, message='', failure=fail)
+        def resolve():
+            streams = self.api.playback(target, season, episode)
+            try:
+                return {'streams': matching_runtime(streams, old_duration), 'same_cut': True}
+            except ValueError:
+                return {'streams': full_runtime_streams(streams), 'same_cut': False}
+        self.submit(resolve, ready, message='', failure=fail)
 
     def load_home(self):
         self.submit(self.api.home, self.home_loaded, message='Loading your catalog…')
@@ -789,7 +878,9 @@ class Window(QMainWindow):
         previous_duration = float((self.state['history'].get(base_key) or {}).get('duration') or 0) / 1000
         def resolve():
             streams = self.api.playback(subject, season, episode)
-            if base_id and str(base_id) != str(subject['subjectId']):
+            if subject.get('_audio_restart_for_cut'):
+                streams = full_runtime_streams(streams)
+            elif base_id and str(base_id) != str(subject['subjectId']):
                 duration = previous_duration
                 if duration <= 0:
                     base_streams = self.api.playback({**subject, 'subjectId': str(base_id)}, season, episode)
@@ -1033,6 +1124,8 @@ class Window(QMainWindow):
             base_key = str(subject.get('_audio_base_id') or subject['subjectId']) + f':{season}:{episode}'
             old = self.state['history'].get(self.playing_key) or self.state['history'].get(base_key) or {}
             position = int(old.get('position') or 0)
+            if subject.get('_audio_restart_for_cut') and str(old.get('audio_subject_id') or '') != str(subject['subjectId']):
+                position = 0
             self.start_video(self.current_stream['url'], position)
             self.load_captions(subject, self.current_stream)
             self.populate_audio_tracks()
@@ -1058,6 +1151,7 @@ class Window(QMainWindow):
 
     def start_video(self, url, position=0):
         self.end_prebuffer()
+        self.last_progress_checkpoint = None
         self.resume_paused = False
         prepared = self.prepared_media
         reuse = bool(prepared and prepared['key'] == self.playing_key and prepared['remote'] == url
@@ -1112,6 +1206,7 @@ class Window(QMainWindow):
                 self.player.pause()
 
     def seek_to(self, position):
+        self.seek_grace_until = time.monotonic() + 3
         self.resume_position = 0
         position = max(0, min(int(position), self.player.duration()))
         if self.preview_limit:
@@ -1134,6 +1229,15 @@ class Window(QMainWindow):
             return
         stream = self.quality.itemData(index)
         if stream:
+            try:
+                matching_runtime([stream], float((self.current_stream or {}).get('duration') or self.player.duration() / 1000))
+            except ValueError:
+                self.quality.blockSignals(True)
+                old = next((row for row in range(1, self.quality.count()) if (self.quality.itemData(row) or {}).get('url') == (self.current_stream or {}).get('url')), 0)
+                self.quality.setCurrentIndex(old)
+                self.quality.blockSignals(False)
+                self.show_error('That quality is a different cut. Keeping the current video and your place.')
+                return
             was_playing = self.player.isPlaying()
             self.current_stream = stream
             self.start_video(stream['url'], self.player.position())
@@ -1141,6 +1245,9 @@ class Window(QMainWindow):
                 self.player.pause()
 
     def position_changed(self, position):
+        if (position > 0 and self.stack.currentIndex() == 2 and self.playing_subject
+                and self.playing_key and not self.resume_position and not getattr(self, 'prebuffering', False)):
+            self.last_progress_checkpoint = (self.playing_key, position, self.player.duration())
         if not self.progress.isSliderDown():
             self.progress.setValue(position)
         self.clock.setText(timestamp(position) + ' / ' + timestamp(self.player.duration()))
@@ -1250,6 +1357,8 @@ class Window(QMainWindow):
                 self.show_error(str(error))
 
     def adapt_quality(self):
+        if time.monotonic() < getattr(self, 'seek_grace_until', 0):
+            return
         if (self.stack.currentIndex() != 2 or self.quality.currentIndex() != 0 or not self.current_stream
                 or not self.player.isPlaying() or len(self.streams) < 2 or self.auto_probe_running or time.monotonic() - self.last_auto_probe < 30):
             return
@@ -1258,12 +1367,16 @@ class Window(QMainWindow):
         original_url = self.current_stream['url']
         def done(speed):
             self.auto_probe_running = False
-            if self.quality.currentIndex() != 0 or self.stack.currentIndex() != 2 or not self.player.isPlaying():
+            if self.quality.currentIndex() != 0 or self.stack.currentIndex() != 2 or not self.player.isPlaying() or (self.current_stream or {}).get('url') != original_url or time.monotonic() < getattr(self, 'seek_grace_until', 0):
                 return
             first_probe = not self.auto_bandwidth
             self.auto_bandwidth = speed if first_probe else .65 * self.auto_bandwidth + .35 * speed
             self.state['bandwidth_mbps'] = self.auto_bandwidth
             choices = [stream for stream in self.streams if int(stream.get('resolutions') or 0) <= 1080] or self.streams
+            try:
+                choices = matching_runtime(choices, float((self.current_stream or {}).get('duration') or self.player.duration() / 1000))
+            except ValueError:
+                return
             target = select_quality(choices, self.auto_bandwidth)
             if not target:
                 return
@@ -1365,7 +1478,16 @@ class Window(QMainWindow):
         self.show_items([item['subject'] for item in history])
 
     def save_progress(self):
-        if self.resume_position or self.stack.currentIndex() != 2 or not self.playing_key or not self.playing_subject or self.player.position() <= 0:
+        if self.resume_position or not self.playing_key or not self.playing_subject:
+            return
+        position, duration = self.player.position(), self.player.duration()
+        checkpoint = self.last_progress_checkpoint
+        if checkpoint and checkpoint[0] == self.playing_key:
+            if position <= 0 or self.stack.currentIndex() != 2:
+                position, duration = checkpoint[1:]
+        elif self.stack.currentIndex() != 2:
+            return
+        if position <= 0:
             return
         history_key = self.playing_key
         history_subject = self.playing_subject
@@ -1373,13 +1495,18 @@ class Window(QMainWindow):
             history_key = self.playing_subject['_audio_base_id'] + ':' + ':'.join(self.playing_key.rsplit(':', 2)[1:])
             history_subject = {**self.playing_subject, 'subjectId': self.playing_subject['_audio_base_id']}
         self.state['history'][history_key] = {'subject': history_subject,
-            'position': self.player.position(), 'duration': self.player.duration(), 'updated': time.time()}
+            'position': position, 'duration': duration or int(float((self.current_stream or {}).get('duration') or 0) * 1000), 'updated': time.time(),
+            'audio_subject_id': str(self.playing_subject['subjectId'])}
         self.persist()
 
     def persist(self):
-        temp = STATE_PATH.with_suffix('.tmp')
-        temp.write_text(json.dumps(self.state, ensure_ascii=False), encoding='utf-8')
-        temp.replace(STATE_PATH)
+        try:
+            self.library_store.save(self.state)
+            return True
+        except (OSError, ValueError) as error:
+            self.status.setText('Could not save your library. Check free disk space and folder permissions; MovieBox will retry.')
+            self.status.setToolTip(str(error))
+            return False
 
     def open_local(self):
         path, _ = QFileDialog.getOpenFileName(self, 'Open a video', '', 'Video files (*.mp4 *.mkv *.webm *.mov *.avi);;All files (*)')
@@ -1459,6 +1586,8 @@ class Window(QMainWindow):
             self.start_video(QUrl.fromLocalFile(path).toString())
 
     def closeEvent(self, event):
+        self.update_timer.stop()
+        self.update_pool.shutdown(wait=False, cancel_futures=True)
         if self.cinema and self.cinema.isVisible():
             self.cinema.leave()
         self.save_progress()
