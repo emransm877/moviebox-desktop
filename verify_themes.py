@@ -96,6 +96,16 @@ for width,height in ((255,382),(210,315)):
     assert abs(fitted.width()/fitted.height()-480/270)<.02
     assert fitted.width()<=width and fitted.height()<=height
 checks['wide_detail_artwork_preserves_aspect_after_resize']=True
+w.detail_title.setText('A movie with a short synopsis')
+w.description.setText('A short synopsis stays next to the Watch controls.')
+w.season_row.hide();app.processEvents()
+assert 0<=w.watch.geometry().top()-w.description.geometry().bottom()<=24
+checks['movie_watch_controls_follow_synopsis_without_flexible_gap']=True
+w.season.addItem('Season 1',{'se':1,'maxEp':2})
+w.season_row.show();w.season.show();app.processEvents()
+assert 0<=w.season_row.geometry().top()-w.description.geometry().bottom()<=24
+assert 0<=w.watch.geometry().top()-w.season_row.geometry().bottom()<=24
+checks['series_season_controls_remain_between_synopsis_and_actions']=True
 checks['passed']=True
 (OUT/'result.json').write_text(json.dumps(checks,indent=2),encoding='utf-8')
 print(json.dumps(checks,indent=2));w.close();app.processEvents()

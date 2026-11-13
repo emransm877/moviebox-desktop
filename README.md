@@ -1,6 +1,6 @@
 # MovieBox Desktop App
 
-Independent Windows client · Preview 0.7.0 · Installed app name: **MovieBox**
+Independent Windows client · Preview 0.8.0 · Installed app name: **MovieBox**
 
 A local Windows reconstruction with a native Qt interface and native video player.
 Runs without Android, an emulator, or an embedded MovieBox website.
@@ -9,14 +9,14 @@ Launch `MovieBox.exe` from its folder. Keep the `_internal` directory beside it.
 
 ## Download and install
 
-[**Download Windows setup EXE**](https://github.com/emransm877/moviebox-desktop/releases/latest/download/MovieBox-Setup-0.7.0-windows-x64.exe)
+[**Download Windows setup EXE**](https://github.com/emransm877/moviebox-desktop/releases/latest/download/MovieBox-Setup-0.8.0-windows-x64.exe)
 
 Run the setup EXE to install the complete application, Start menu shortcut and
 optional Desktop shortcut. Python and administrator access are not required.
 Uninstall through Windows Settings; your library/history remain in your user data
 directory. The installed application and shortcuts are named **MovieBox**.
 
-A [portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.7.0)
+A [portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.8.0)
 is also available. Extract it completely and launch `MovieBox/MovieBox.exe`;
 keep `_internal` beside that executable.
 
@@ -105,3 +105,7 @@ Names, artwork and dependencies retain their respective owners' rights. See
 ## Themes and latest titles
 
 Settings offers five persistent themes with matching MovieBox logos. Home rotates up to 100 latest movies and TV shows, with Previous/Next/Pause and active-title Watch/More info actions. Existing features remain available. See [theme and spotlight behavior](docs/THEMES_AND_SPOTLIGHT.md).
+
+## Catalogue cache and Continue watching
+
+Movies/TV Shows restore their cached pages and position immediately. After five minutes, the app checks for new results in the background; Apply filters can refresh manually. In Continue watching choose **Select titles**, select one/several or **Select all**, then **Remove selected**. **Undo removal** restores the last batch during the current session. My list is preserved. See [details](docs/CACHE_AND_HISTORY.md).

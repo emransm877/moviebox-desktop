@@ -32,8 +32,9 @@ from audio_options import audio_variants, language_label, with_audio, matching_r
 from library_store import LibraryStore
 import release_updates
 from artwork import resized_artwork
+from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
 
-APP_VERSION = '0.7.0'
+APP_VERSION = '0.8.0'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -334,6 +335,14 @@ class PosterDelegate(QStyledItemDelegate):
             accent.setAlpha(round((150 if highlighted else 0) + (105 if highlighted else 255) * amount))
             painter.setPen(QPen(accent, 1.0 + amount))
             painter.drawRoundedRect(cover, 12, 12)
+        if getattr(self.view.window(),'history_editing',False):
+            box=QRectF(cover.right()-29,cover.top()+9,21,21)
+            selected=bool(option.state & QStyle.State_Selected)
+            tone=QColor(QApplication.instance().property('movieboxAccent') or '#48e6b0')
+            painter.setPen(QPen(tone,2));painter.setBrush(tone if selected else QColor('#151e28'))
+            painter.drawRoundedRect(box,5,5)
+            if selected:
+                painter.setPen(QColor('#102018' if dark else '#ffffff'));painter.drawText(box,Qt.AlignCenter,'✓')
         painter.restore()
 
 
@@ -460,6 +469,11 @@ class Window(QMainWindow):
         self.catalogue_kind = None
         self.catalogue_page = 1
         self.catalogue_next_page = 2
+        self.catalogue_cache = CatalogueCache(DATA / 'catalogue-cache.json')
+        self.active_catalogue_cache_key = ''
+        self.catalogue_pending_refresh_key = ''
+        self.history_editing = False
+        self.history_undo = {}
         self.catalogue_selections = self.state.get('catalogue_filters', {})
         if not isinstance(self.catalogue_selections, dict):
             self.catalogue_selections = {}
@@ -899,6 +913,7 @@ class Window(QMainWindow):
     def apply_catalogue_filters(self):
         if not self.catalogue_kind:
             return
+        self.capture_catalogue_view()
         self.catalogue_selections[self.catalogue_kind] = {
             name: picker.currentData() for name, picker in self.catalogue_filter_fields.items()
         }
@@ -906,7 +921,7 @@ class Window(QMainWindow):
         self.persist()
         self.catalogue_page = 1
         self.request_generation += 1
-        self.request_catalogue_page()
+        self.request_catalogue_page(force=True)
 
     def reset_catalogue_filters(self):
         if not self.catalogue_kind:
@@ -915,19 +930,58 @@ class Window(QMainWindow):
         self.populate_catalogue_filters(self.catalogue_kind)
         self.apply_catalogue_filters()
 
-    def request_catalogue_page(self, append=False):
+    def request_catalogue_page(self, append=False, force=False):
         kind, page, generation = self.catalogue_kind, self.catalogue_page, self.request_generation
         selection = dict(self.catalogue_selections.get(kind, {}))
-        self.more.setEnabled(False)
-        self.catalogue_apply.setText('Loading…')
-        if not append:
+        cache_key = self.catalogue_cache.key(kind, selection)
+        self.active_catalogue_cache_key = cache_key
+        cached = self.catalogue_cache.get(cache_key)
+        previous_items = list(self.catalog_model.items) if append else []
+        if cached and not append:
+            self.catalogue_pending_refresh_key = ''
+            self.show_items(cached['items'])
+            self.more.setEnabled(True); self.more.setVisible(bool(cached.get('has_more')))
+            self.more.setText('Load more')
+            self.catalogue_next_page = int(cached.get('next_page',2))
+            self.catalogue_page = int(cached.get('page',1))
+            self.catalogue_apply.setText('Apply filters')
+            row = max(0,min(int(cached.get('row',0)),len(cached['items'])-1))
+            if cached['items']:self.grid.setCurrentIndex(self.catalog_model.index(row,0))
+            def restore_scroll():
+                if self.catalogue_kind==kind and self.active_catalogue_cache_key==cache_key:
+                    self.grid.verticalScrollBar().setValue(int(cached.get('scroll',0)))
+            QTimer.singleShot(0,restore_scroll)
+            if not force and time.time()-float(cached.get('at',0))<self.catalogue_cache.TTL:
+                return
+        if not cached or append:
+            self.more.setEnabled(False)
+            self.catalogue_apply.setText('Loading…')
+        if not append and not cached:
             self.show_items([])
             self.empty.setText('Loading the MovieBox catalogue…')
             self.more.hide()
         def done(result):
+            old = cached
+            first_count = int((old or {}).get('first_count',len(result['items'])))
+            unchanged = old and not append and old['items'][:first_count] == [compact_catalogue_subject(item) for item in result['items']]
+            if unchanged:
+                old['at']=time.time();self.catalogue_cache.put(cache_key,old)
+            else:
+                merged = previous_items + result['items'] if append else result['items']
+                seen_ids=set();merged=[item for item in merged if not (str(item['subjectId']) in seen_ids or seen_ids.add(str(item['subjectId'])))]
+                self.catalogue_cache.put(cache_key,{'items':merged,'at':time.time(),'has_more':result['has_more'],'next_page':result['next_page'],'page':page,'first_count':first_count if append else len(result['items']),'scroll':0,'row':0})
+            self.submit(self.catalogue_cache.flush,lambda _:None,message='',failure=lambda _:None)
             if generation != self.request_generation or kind != self.catalogue_kind:
                 return
-            previous = self.catalog_model.items if append else []
+            if unchanged:
+                self.catalogue_apply.setText('Apply filters');self.more.setEnabled(True)
+                return
+            if cached and not append and not force and (self.grid.hasFocus() or self.grid.verticalScrollBar().value()>0):
+                self.catalogue_pending_refresh_key=cache_key
+                self.catalogue_apply.setText('New titles · Apply')
+                self.status.setText('New titles are available. Apply filters to refresh this view.')
+                return
+            previous = previous_items if append else []
             seen = {str(item.get('subjectId')) for item in previous}
             items = previous + [item for item in result['items'] if str(item.get('subjectId')) not in seen]
             self.show_items(items)
@@ -951,11 +1005,13 @@ class Window(QMainWindow):
             self.catalogue_apply.setEnabled(True)
             self.catalogue_apply.setText('Apply filters')
             self.catalogue_reset.setEnabled(True)
-            self.show_error(message)
-            if not append:
+            if cached:
+                self.status.setText('Could not check for new titles. Your current catalogue is still available.')
+            else:self.show_error(message)
+            if not append and not cached:
                 self.empty.setText('The catalogue could not load.\nUse Apply filters to retry.')
         self.submit(lambda: self.catalogue_backend.page(kind, selection, page), done,
-                    message='Loading catalogue…', failure=failed)
+                    message='' if cached else 'Loading catalogue…', failure=failed)
 
     def run_search(self):
         keyword = self.search.text().strip()
@@ -1227,6 +1283,7 @@ class Window(QMainWindow):
 
     def load_detail_art(self, subject, generation):
         url = (subject.get('cover') or {}).get('url')
+        self.detail_art_url = url
         if not url:
             return
         def ready(decoded):
@@ -1243,6 +1300,8 @@ class Window(QMainWindow):
         self.detail_data = data
         self.current = data.get('subject') or self.current
         item = self.current
+        if (item.get('cover') or {}).get('url') != getattr(self,'detail_art_url',None):
+            self.load_detail_art(item,generation)
         self.detail_title.setText(item.get('title', ''))
         self.detail_meta.setText('  ·  '.join(str(v) for v in [str(item.get('releaseDate') or '')[:4],
             item.get('genre'), item.get('countryName'), ('IMDb ' + str(item['imdbRatingValue'])) if item.get('imdbRatingValue') else ''] if v))
@@ -1255,6 +1314,7 @@ class Window(QMainWindow):
             self.season.addItem('Season ' + str(season.get('se', 0)), season)
         self.season.blockSignals(False)
         self.season.setVisible(bool(seasons))
+        self.season_row.setVisible(bool(seasons))
         self.episode.hide()
         self.episode_panel.setVisible(bool(seasons))
         self.populate_episodes()
@@ -1671,6 +1731,10 @@ class Window(QMainWindow):
         self.status.setText('Ready to resume')
 
     def stop_for_navigation(self):
+        self.capture_catalogue_view()
+        if hasattr(self,'history_toolbar'):
+            self.finish_history_selection()
+            self.history_toolbar.hide()
         self.catalogue_kind = None
         if hasattr(self, 'catalogue_filter_panel'):
             self.catalogue_filter_panel.hide()
@@ -1718,6 +1782,62 @@ class Window(QMainWindow):
         self.more.hide()
         history = sorted(self.state['history'].values(), key=lambda item: item.get('updated', 0), reverse=True)
         self.show_items([item['subject'] for item in history])
+        self.history_toolbar.show()
+        self.update_history_selection()
+
+    def catalogue_clicked(self,index):
+        if not self.history_editing:self.open_detail(index.data(Qt.UserRole))
+
+    def catalogue_activated(self,index):
+        if self.history_editing:
+            from PySide6.QtCore import QItemSelectionModel
+            self.grid.selectionModel().select(index,QItemSelectionModel.Toggle)
+        else:self.open_detail(index.data(Qt.UserRole))
+
+    def begin_history_selection(self):
+        self.history_editing=True
+        self.grid.setSelectionMode(QListView.MultiSelection)
+        self.grid.clearSelection();self.update_history_selection();self.grid.setFocus()
+
+    def finish_history_selection(self):
+        self.history_editing=False
+        if hasattr(self,'grid'):
+            self.grid.setSelectionMode(QListView.SingleSelection)
+            self.grid.clearSelection();self.update_history_selection()
+
+    def update_history_selection(self,*_):
+        if not hasattr(self,'history_select'):return
+        selected=len(self.grid.selectionModel().selectedRows()) if self.history_editing else 0
+        self.history_select.setVisible(not self.history_editing)
+        for button in (self.history_all,self.history_remove,self.history_done):button.setVisible(self.history_editing)
+        self.history_remove.setText(f'Remove selected ({selected})')
+        self.history_remove.setEnabled(selected>0)
+        self.history_all.setText('Clear selection' if selected and selected==self.catalog_model.rowCount() else 'Select all')
+        self.history_undo_button.setVisible(bool(self.history_undo))
+        self.grid.viewport().update()
+
+    def select_all_history(self):
+        if len(self.grid.selectionModel().selectedRows())==self.catalog_model.rowCount():self.grid.clearSelection()
+        else:self.grid.selectAll()
+
+    def remove_selected_history(self):
+        identities={str(index.data(Qt.UserRole)['subjectId']) for index in self.grid.selectionModel().selectedRows()}
+        if not identities:return
+        removed={key:value for key,value in self.state['history'].items() if str((value.get('subject') or {}).get('subjectId')) in identities}
+        for key in removed:self.state['history'].pop(key,None)
+        if not self.persist():
+            self.state['history'].update(removed);return
+        self.history_undo=removed
+        playing=str((self.playing_subject or {}).get('_audio_base_id') or (self.playing_subject or {}).get('subjectId') or '')
+        if playing in identities:
+            self.playing_key='';self.last_progress_checkpoint=None;self.prepared_media=None
+        self.show_history()
+        self.status.setText(f'Removed {len(identities)} title(s) from Continue watching. Undo is available.')
+
+    def undo_history_removal(self):
+        for key,value in self.history_undo.items():self.state['history'].setdefault(key,value)
+        if not self.persist():return
+        self.history_undo={};self.show_history();self.status.setText('Continue watching restored.')
 
     def save_progress(self):
         if self.resume_position or not self.playing_key or not self.playing_subject:
@@ -1828,6 +1948,8 @@ class Window(QMainWindow):
             self.start_video(QUrl.fromLocalFile(path).toString())
 
     def closeEvent(self, event):
+        self.capture_catalogue_view()
+        self.catalogue_cache.flush()
         self.update_timer.stop()
         self.update_pool.shutdown(wait=False, cancel_futures=True)
         if self.cinema and self.cinema.isVisible():
@@ -1844,6 +1966,16 @@ class Window(QMainWindow):
         self.art_pool.shutdown(wait=False, cancel_futures=True)
         self.pool.shutdown(wait=False, cancel_futures=True)
         event.accept()
+
+    def capture_catalogue_view(self):
+        if not getattr(self,'catalogue_kind',None) or not getattr(self,'active_catalogue_cache_key',''):
+            return
+        if self.catalogue_pending_refresh_key==self.active_catalogue_cache_key:return
+        entry=self.catalogue_cache.get(self.active_catalogue_cache_key)
+        if entry and hasattr(self,'grid'):
+            entry['scroll']=self.grid.verticalScrollBar().value()
+            entry['row']=max(0,self.grid.currentIndex().row())
+            self.catalogue_cache.put(self.active_catalogue_cache_key,entry)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

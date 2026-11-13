@@ -14,6 +14,8 @@ from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 import main
+from catalogue_cache import CatalogueCache
+main.CatalogueCache=lambda path:CatalogueCache()
 
 
 class FixtureAPI:
