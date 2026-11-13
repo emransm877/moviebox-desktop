@@ -294,6 +294,13 @@ class InputRouter(QObject):
                 w.grid.activated.emit(w.grid.currentIndex())
                 return True
         if isinstance(focus, QAbstractButton) and key in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):
+            if hasattr(w, 'theme_navigation') and w.theme_navigation.isAncestorOf(focus):
+                choices = [b for b in w.theme_nav_buttons.values() if b.isVisible() and b.isEnabled()]
+                if key in (Qt.Key_Left, Qt.Key_Right) and focus in choices:
+                    choices[(choices.index(focus) + (1 if key == Qt.Key_Right else -1)) % len(choices)].setFocus()
+                elif key == Qt.Key_Down:
+                    w.search.setFocus()
+                return True
             if w.sidebar.isAncestorOf(focus):
                 choices = [b for b in w.sidebar.findChildren(QAbstractButton) if b.isVisible() and b.isEnabled()]
                 if focus in choices:

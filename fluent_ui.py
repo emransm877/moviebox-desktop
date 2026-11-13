@@ -5,13 +5,14 @@ from pathlib import Path
 import sys
 import winreg
 from PySide6.QtCore import Qt, QSize, QRectF, QUrl, QTimer, QBuffer, QByteArray, QIODevice, QPoint
-from PySide6.QtGui import (QColor, QPainter, QPixmap, QFont, QIcon, QLinearGradient,
+from PySide6.QtGui import (QColor, QPainter, QPixmap, QFont, QFontMetrics, QIcon, QLinearGradient,
     QPainterPath, QImageReader, QShortcut, QKeySequence)
 from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QLabel, QPushButton,
     QVBoxLayout, QHBoxLayout, QLineEdit, QComboBox, QListView, QListWidget, QSlider,
     QSpinBox, QCheckBox, QStackedWidget, QSizePolicy, QDialog, QFileDialog, QScrollArea, QMenu, QWidgetAction)
 from PySide6.QtSvg import QSvgRenderer
 from interactions import SeekSlider, FluentComboBox
+from themes import THEMES, palette, initial_theme, theme_key
 
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
@@ -73,25 +74,35 @@ def apply_window_material(window, dark=True):
         pass
 
 
-def refresh_theme(window, dark):
-    QApplication.instance().setStyleSheet(stylesheet(dark))
+def refresh_theme(window, selection):
+    p = palette(selection)
+    QApplication.instance().setStyleSheet(stylesheet(selection))
     for widget in window.findChildren(QPushButton):
         glyph = widget.property('fluentGlyph')
         if glyph:
-            widget.setIcon(icon(glyph, '#08251a' if widget.property('fluentPrimary') else None))
+            widget.setIcon(icon(glyph, p['ink'] if widget.property('fluentPrimary') else None))
     window.search_action.setIcon(icon('search'))
-    apply_window_material(window, dark)
+    apply_window_material(window, p['dark'])
+    if hasattr(window, 'theme_navigation'):
+        apply_theme_layout(window)
+    if hasattr(window, 'hero'):
+        window.hero.apply_theme()
+    themed_logo = ASSETS / ('moviebox-logo-' + QApplication.instance().property('movieboxTheme') + '.svg')
+    window.setWindowIcon(QIcon(str(themed_logo)))
+    if hasattr(window, 'brand_logo'):
+        window.brand_logo.setPixmap(QIcon(str(themed_logo)).pixmap(40,44))
     window.grid.viewport().update()
 
 
-def stylesheet(dark=True):
-    p = ({'base':'#0b0f15','panel':'#121820','surface':'#1a222d','hover':'#232e3b',
-          'text':'#f0f3f8','secondary':'#9ba9bd','line':'#2a3543','field':'#19212c','select':'#233932'}
-         if dark else
-         {'base':'#eef1f6','panel':'#f9fafc','surface':'#ffffff','hover':'#e9edf4',
-          'text':'#182431','secondary':'#647286','line':'#d9e0e9','field':'#ffffff','select':'#d7f3e8'})
+def stylesheet(selection=True):
+    global ACCENT
+    p = palette(selection)
+    dark = p['dark']
+    ACCENT = p['accent']
     app = QApplication.instance()
     app.setProperty('movieboxDark', dark)
+    app.setProperty('movieboxTheme', next(key for key, value in THEMES.items() if value is p))
+    app.setProperty('movieboxAccent', p['accent'])
     css = '''
     QWidget{background:transparent;color:TEXT;font-family:"Segoe UI Variable Text","Segoe UI";font-size:13px}
     QWidget#appRoot{background:BASE}
@@ -129,7 +140,7 @@ def stylesheet(dark=True):
     QComboBox QAbstractItemView::item{min-height:32px;padding:2px 12px;border:0;border-radius:6px}
     QComboBox QAbstractItemView::item:hover{background:HOVER}
     QComboBox QAbstractItemView::item:selected{background:SELECT;color:TEXT}
-    QSpinBox{background:FIELD;border:1px solid LINE;border-radius:8px;padding:8px;min-width:62px}
+    QSpinBox{background:FIELD;border:1px solid LINE;border-radius:8px;padding:9px 30px 9px 14px;min-width:76px}
     QSpinBox::up-button,QSpinBox::down-button{background:transparent;border:0;width:17px}
     QAbstractItemView{border:0;outline:0;background:transparent;selection-background-color:SELECT}
     QListWidget::item{background:SURFACE;border:1px solid LINE;border-radius:10px;padding:16px;margin:4px}
@@ -153,8 +164,16 @@ def stylesheet(dark=True):
     QListWidget#episodeCards::item{padding:8px;margin:3px;background:SURFACE;border:1px solid LINE;border-radius:8px}
     QListWidget#episodeCards::item:selected{background:SELECT;border-color:#48e6b0;color:TEXT}
     '''
-    for name, value in p.items():
+    for before, after in {'#48e6b0':p['accent'], '#08251a':p['ink'], '#65efc0':p['accent'], '#78f0c6':p['accent'], '#2fcb96':p['accent'], '#2c9c7b':p['select']}.items():
+        css = css.replace(before, after)
+    for name in ('base','panel','surface','hover','text','secondary','line','field','select'):
+        value = p[name]
         css = css.replace(name.upper(), value)
+    if p is THEMES['eclipse']:
+        css += 'QLabel#heading,QLabel#brandName,QLabel#detailTitle{font-family:"Georgia"} '
+    if p is THEMES['prism']:
+        css += 'QFrame#contentPanel{border-color:#674887} '
+    css += 'QFrame#themeNavigation{background:' + p['panel'] + ';border-radius:14px} '
     arrow = (ASSETS / ('chevron-down.svg' if dark else 'chevron-down-light.svg')).as_posix()
     up = (ASSETS / ('chevron-up.svg' if dark else 'chevron-up-light.svg')).as_posix()
     check = (ASSETS / 'check.svg').as_posix()
@@ -167,7 +186,7 @@ def stylesheet(dark=True):
 
 class NavButton(QPushButton):
     def __init__(self, text, glyph, callback, *, selectable=True):
-        super().__init__('  ' + text)
+        super().__init__(text)
         self.setObjectName('navItem')
         self.setIcon(icon(glyph))
         self.setProperty('fluentGlyph', glyph)
@@ -175,6 +194,9 @@ class NavButton(QPushButton):
         self.setCheckable(selectable)
         self.setCursor(Qt.PointingHandCursor)
         self.setMinimumHeight(45)
+        bold = QFont(self.font());bold.setPixelSize(14);bold.setWeight(QFont.DemiBold)
+        self.label_width = QFontMetrics(bold).horizontalAdvance(text) + 64
+        self.setMinimumWidth(self.label_width)
         self.clicked.connect(callback)
 
     def paintEvent(self, event):
@@ -191,7 +213,7 @@ def action(text, callback=None, glyph=None, *, primary=False, quiet=False):
     widget = QPushButton(text)
     widget.setCursor(Qt.PointingHandCursor)
     if glyph:
-        widget.setIcon(icon(glyph, '#08251a' if primary else None))
+        widget.setIcon(icon(glyph, palette(QApplication.instance().property('movieboxTheme'))['ink'] if primary else None))
         widget.setProperty('fluentGlyph', glyph)
         widget.setProperty('fluentPrimary', primary)
         widget.setIconSize(QSize(18, 18))
@@ -204,6 +226,31 @@ def action(text, callback=None, glyph=None, *, primary=False, quiet=False):
     return widget
 
 
+class AspectImageLabel(QLabel):
+    """Retain the original decoded image and fit it without stretching or clipping."""
+    def __init__(self):
+        super().__init__()
+        self.original = QPixmap()
+        self.setAlignment(Qt.AlignCenter)
+        self.setScaledContents(False)
+
+    def setPixmap(self, image):
+        self.original = QPixmap(image)
+        self.fit_image()
+
+    def clear(self):
+        self.original = QPixmap()
+        super().clear()
+
+    def fit_image(self):
+        if not self.original.isNull():
+            super().setPixmap(self.original.scaled(self.size(),Qt.KeepAspectRatio,Qt.SmoothTransformation))
+
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        self.fit_image()
+
+
 class HeroCard(QWidget):
     def __init__(self, window, fetch_bytes):
         super().__init__()
@@ -211,13 +258,21 @@ class HeroCard(QWidget):
         self.image = QPixmap()
         self.loading_logo = QIcon(str(ASSETS / 'moviebox-logo.svg')).pixmap(128, 144)
         self.subject = None
+        self.slides = []
+        self.slide_index = 0
+        self.rotation_paused = False
+        self.timer = QTimer(self)
+        self.timer.setInterval(8000)
+        self.timer.timeout.connect(lambda: self.advance(1, automatic=True))
+        self.timer.start()
         self.generation = 0
         self.setMinimumHeight(248)
         self.setMaximumHeight(270)
         content = QVBoxLayout(self)
         content.setContentsMargins(28, 23, 28, 23)
         content.setSpacing(9)
-        eyebrow = QLabel('IN THE SPOTLIGHT')
+        eyebrow = QLabel('LATEST MOVIES + TV SHOWS')
+        self.eyebrow = eyebrow
         eyebrow.setStyleSheet('color:#9ceacb;font-size:10px;font-weight:650;letter-spacing:2px')
         content.addWidget(eyebrow)
         self.title = QLabel('A world of stories.\nOne beautiful place.')
@@ -231,14 +286,84 @@ class HeroCard(QWidget):
         content.addWidget(self.meta)
         content.addStretch()
         actions = QHBoxLayout()
+        actions.setSpacing(8)
         self.explore = action('Watch now', self.open, 'play', primary=True)
         self.explore.setFixedWidth(145)
         actions.addWidget(self.explore)
+        self.info = action('More info', self.more_info)
+        actions.addWidget(self.info)
         self.save = action('My list', self.save_subject, 'bookmark')
         self.save.setStyleSheet('QPushButton{background:rgba(255,255,255,20);color:white;border:1px solid rgba(255,255,255,50)}QPushButton:hover{background:rgba(255,255,255,38)}')
         actions.addWidget(self.save)
         actions.addStretch()
+        self.previous = action('‹', lambda: self.advance(-1))
+        self.previous.setAccessibleName('Previous spotlight title')
+        self.next = action('›', lambda: self.advance(1))
+        self.next.setAccessibleName('Next spotlight title')
+        self.pause_rotation = action('Ⅱ', self.toggle_rotation)
+        self.pause_rotation.setAccessibleName('Pause slideshow')
+        self.counter = QLabel('1 / 1')
+        for control in (self.previous, self.next, self.pause_rotation):
+            control.setFixedWidth(34)
+            control.setStyleSheet('padding:8px 2px')
+            actions.addWidget(control)
+        actions.addWidget(self.counter)
         content.addLayout(actions)
+        self.apply_theme()
+
+    def apply_theme(self):
+        p = palette(QApplication.instance().property('movieboxTheme'))
+        family = 'Georgia' if p is THEMES['eclipse'] else 'Segoe UI Variable Display'
+        self.title.setStyleSheet(f'color:{p["text"]};font-family:"{family}";font-size:{24 if getattr(self,"compact",False) else 31}px;font-weight:650;background:transparent')
+        self.meta.setStyleSheet(f'color:{p["secondary"]};font-size:12px')
+        self.eyebrow.setStyleSheet(f'color:{p["accent"]};font-size:10px;font-weight:650;letter-spacing:2px')
+        self.save.setStyleSheet('')
+        self.loading_logo = QIcon(str(ASSETS / ('moviebox-logo-' + QApplication.instance().property('movieboxTheme') + '.svg'))).pixmap(128,144)
+        self.update()
+
+    def set_slides(self, subjects):
+        seen = set()
+        slides = []
+        for subject in subjects:
+            identity = str(subject.get('subjectId') or '')
+            if identity and identity not in seen:
+                slides.append(subject); seen.add(identity)
+        if not slides:
+            return
+        # Preserve the exact active title while the latest-feed request completes.
+        active = str((self.subject or {}).get('subjectId') or '')
+        self.slides = slides[:100]
+        self.slide_index = next((i for i, subject in enumerate(self.slides) if str(subject['subjectId']) == active), 0)
+        if QApplication.focusWidget() and self.isAncestorOf(QApplication.focusWidget()):
+            # Never change a focused Watch/More info target under the user.
+            if active and not any(str(s['subjectId']) == active for s in self.slides):
+                self.slides = [self.subject] + self.slides[:99]
+                self.slide_index = 0
+        self.set_subject(self.slides[self.slide_index])
+        self.counter.setText(f'{self.slide_index + 1} / {len(self.slides)}')
+
+    def advance(self, step, automatic=False):
+        focused = QApplication.focusWidget()
+        if automatic and (self.rotation_paused or not self.isVisible() or not self.window.isActiveWindow()
+                          or self.underMouse() or (focused and self.isAncestorOf(focused))
+                          or self.window.stack.currentIndex() != 0 or not self.window.poster_delegate.motion):
+            return
+        if len(self.slides) < 2:
+            return
+        self.slide_index = (self.slide_index + step) % len(self.slides)
+        self.set_subject(self.slides[self.slide_index])
+        self.counter.setText(f'{self.slide_index + 1} / {len(self.slides)}')
+        self.timer.start()
+
+    def toggle_rotation(self):
+        self.rotation_paused = not self.rotation_paused
+        self.pause_rotation.setText('▶' if self.rotation_paused else 'Ⅱ')
+        self.pause_rotation.setAccessibleName('Resume slideshow' if self.rotation_paused else 'Pause slideshow')
+
+    def more_info(self):
+        if self.subject:
+            self.window.hero_auto_play = ''
+            self.window.open_detail(self.subject)
 
     def set_compact(self, compact):
         if getattr(self, 'compact', None) == compact:
@@ -248,12 +373,14 @@ class HeroCard(QWidget):
         self.layout().setContentsMargins(24, 15, 24, 15) if compact else self.layout().setContentsMargins(28, 23, 28, 23)
         self.layout().setSpacing(6 if compact else 9)
         self.layout().itemAt(0).widget().setVisible(not compact)
-        self.title.setStyleSheet('color:white;font-family:"Segoe UI Variable Display","Segoe UI";font-size:' + ('24' if compact else '31') + 'px;font-weight:650;background:transparent')
+        self.apply_theme()
 
     def set_subject(self, subject):
         if self.subject and self.subject.get('subjectId') == subject.get('subjectId'):
             return
         self.subject = subject
+        self.image = QPixmap()
+        self.update()
         self.generation += 1
         generation = self.generation
         title = subject.get('title') or 'Find your next favorite.'
@@ -302,7 +429,8 @@ class HeroCard(QWidget):
         path = QPainterPath()
         path.addRoundedRect(QRectF(self.rect()), 18, 18)
         painter.setClipPath(path)
-        painter.fillRect(self.rect(), QColor('#15242a'))
+        p = palette(QApplication.instance().property('movieboxTheme'))
+        painter.fillRect(self.rect(), QColor(p['hero']))
         if not self.image.isNull():
             target = self.image.size().scaled(self.size(), Qt.KeepAspectRatioByExpanding)
             source = QRectF((self.image.width() - self.width() * self.image.width() / target.width()) / 2,
@@ -314,14 +442,13 @@ class HeroCard(QWidget):
             painter.drawPixmap(self.width() - 235, (self.height() - 144) // 2, self.loading_logo)
             painter.setOpacity(1)
         gradient = QLinearGradient(0, 0, self.width(), 0)
-        gradient.setColorAt(0, QColor(9, 21, 25, 250))
-        gradient.setColorAt(.45, QColor(9, 21, 25, 208))
-        gradient.setColorAt(.78, QColor(9, 21, 25, 55))
-        gradient.setColorAt(1, QColor(9, 21, 25, 12))
+        for stop, alpha in ((0,252),(.45,226),(.78,65),(1,12)):
+            shade = QColor(p['hero']); shade.setAlpha(alpha)
+            gradient.setColorAt(stop, shade)
         painter.fillRect(self.rect(), gradient)
         vertical = QLinearGradient(0, 0, 0, self.height())
         vertical.setColorAt(0, QColor(0, 0, 0, 0))
-        vertical.setColorAt(1, QColor(0, 7, 12, 90))
+        vertical.setColorAt(1, QColor(0, 7, 12, 90 if p['dark'] else 8))
         painter.fillRect(self.rect(), vertical)
         painter.setClipping(False)
         painter.setPen(QColor(255, 255, 255, 22))
@@ -331,6 +458,8 @@ class HeroCard(QWidget):
 
 def set_nav(window, name):
     for key, widget in window.nav_buttons.items():
+        widget.setChecked(key == name)
+    for key, widget in getattr(window, 'theme_nav_buttons', {}).items():
         widget.setChecked(key == name)
     if hasattr(window, 'breadcrumb'):
         label = {'home':'Discover','movies':'Movies','series':'TV Shows','anime':'Anime',
@@ -359,34 +488,97 @@ def browse_kind(window, name):
     window.show_items(items)
 
 
+def apply_theme_layout(window):
+    p = palette(QApplication.instance().property('movieboxTheme'))
+    rail = p['layout'] != 'sidebar'
+    window.sidebar.setFixedWidth(76 if rail else 212)
+    window.theme_navigation.setVisible(p['layout'] == 'top')
+    for label in window.sidebar.findChildren(QLabel):
+        label.setVisible(not rail or label.objectName() == 'brandLogo')
+    for button in window.sidebar.findChildren(NavButton):
+        if not hasattr(button, 'full_label'):
+            button.full_label = button.text()
+        button.setToolTip(button.full_label.strip())
+        button.setAccessibleName(button.full_label.strip())
+        button.setText('' if rail else button.full_label)
+        button.setMinimumWidth(0 if rail else min(button.label_width,194))
+    window.grid.doItemsLayout()
+
+
 def open_settings(window):
     dialog = QDialog(window)
     dialog.setWindowTitle('MovieBox settings')
     dialog.setMinimumWidth(470)
-    layout = QVBoxLayout(dialog)
+    available = QApplication.primaryScreen().availableGeometry()
+    dialog.resize(560, min(760, available.height() - 80))
+    dialog.setMaximumHeight(max(450, available.height() - 60))
+    outer = QVBoxLayout(dialog)
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.NoFrame)
+    body = QWidget()
+    scroll.setWidget(body)
+    outer.addWidget(scroll)
+    layout = QVBoxLayout(body)
     layout.setContentsMargins(28, 24, 28, 24)
     layout.setSpacing(18)
     title = QLabel('Make it yours')
     title.setObjectName('heading')
     layout.addWidget(title)
-    layout.addWidget(QLabel('Appearance'))
+    layout.addWidget(QLabel('MovieBox theme'))
     appearance = FluentComboBox()
-    appearance.addItems(['Dark', 'Light', 'Follow Windows'])
-    modes = ['dark','light','system']
-    appearance.setCurrentIndex(modes.index(window.state.get('appearance', 'dark')) if window.state.get('appearance', 'dark') in modes else 0)
+    appearance.setObjectName('themePicker')
+    appearance.setAccessibleName('MovieBox theme')
+    modes = list(THEMES)
+    for key in modes:
+        appearance.addItem(THEMES[key]['name'], key)
+    appearance.setCurrentIndex(modes.index(initial_theme(window.state, system_is_dark())))
+    theme_hint = QLabel(THEMES[modes[appearance.currentIndex()]]['description'])
+    theme_hint.setWordWrap(True)
+    theme_hint.setObjectName('muted')
     def change(index):
         mode = modes[index]
-        window.state['appearance'] = mode
+        window.state['theme'] = mode
+        window.state['appearance'] = 'theme'
+        appearance_mode.blockSignals(True)
+        appearance_mode.setCurrentIndex(0)
+        appearance_mode.blockSignals(False)
         window.persist()
-        dark = mode == 'dark' or (mode == 'system' and system_is_dark())
-        refresh_theme(window, dark)
+        refresh_theme(window, mode)
+        theme_hint.setText(THEMES[mode]['description'])
+        apply_window_material(dialog, THEMES[mode]['dark'])
     appearance.currentIndexChanged.connect(change)
     layout.addWidget(appearance)
+    layout.addWidget(theme_hint)
+    # Preserve the previous Dark / Light / Follow Windows appearance feature.
+    layout.addWidget(QLabel('Appearance'))
+    appearance_mode = FluentComboBox()
+    appearance_mode.setObjectName('appearancePicker')
+    appearance_modes = ['theme','dark','light','system']
+    appearance_mode.addItems(['Use selected theme colours','Dark','Light','Follow Windows'])
+    appearance_mode.setCurrentIndex(appearance_modes.index(window.state.get('appearance','theme')) if window.state.get('appearance','theme') in appearance_modes else 0)
+    def change_appearance(index):
+        mode = appearance_modes[index]
+        window.state['appearance'] = mode
+        if mode != 'theme':
+            key = 'aurora' if mode == 'light' or (mode == 'system' and not system_is_dark()) else 'obsidian'
+            window.state['theme'] = key
+            appearance.blockSignals(True)
+            appearance.setCurrentIndex(modes.index(key))
+            appearance.blockSignals(False)
+            theme_hint.setText(THEMES[key]['description'])
+        refresh_theme(window, window.state.get('theme','obsidian'))
+        window.persist()
+    appearance_mode.currentIndexChanged.connect(change_appearance)
+    layout.addWidget(appearance_mode)
     layout.addWidget(QLabel('Subtitle text size'))
     size = QSpinBox()
+    size.setObjectName('subtitleSize')
     size.setRange(16, 44)
     size.setSuffix(' px')
     size.setValue(int(window.state.get('subtitle_size', 24)))
+    size.lineEdit().setTextMargins(14,0,10,0)
+    size.lineEdit().setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
     def set_size(value):
         window.state['subtitle_size'] = value
         window.persist()
@@ -405,7 +597,7 @@ def open_settings(window):
     hint.setWordWrap(True)
     hint.setObjectName('muted')
     layout.addWidget(hint)
-    layout.addWidget(action('Done', dialog.accept, primary=True), 0, Qt.AlignRight)
+    outer.addWidget(action('Done', dialog.accept, primary=True), 0, Qt.AlignRight)
     QTimer.singleShot(0, lambda: apply_window_material(dialog, bool(QApplication.instance().property('movieboxDark'))))
     dialog.exec()
 
@@ -432,8 +624,10 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     brand_row = QHBoxLayout()
     brand_row.setContentsMargins(13, 0, 5, 20)
     brand = QLabel()
+    brand.setObjectName('brandLogo')
+    w.brand_logo = brand
     brand.setPixmap(QIcon(str(ASSETS / 'moviebox-logo.svg')).pixmap(32, 36))
-    brand.setFixedSize(36, 40)
+    brand.setFixedSize(40, 44)
     brand_row.addWidget(brand)
     brand_text = QVBoxLayout()
     brand_text.setSpacing(0)
@@ -477,6 +671,18 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     column = QVBoxLayout()
     column.setContentsMargins(0, 0, 0, 0)
     column.setSpacing(13)
+    w.theme_navigation = QFrame()
+    w.theme_navigation.setObjectName('themeNavigation')
+    theme_nav = QHBoxLayout(w.theme_navigation)
+    theme_nav.setContentsMargins(12, 2, 12, 2)
+    w.theme_nav_buttons = {}
+    for key, text, glyph, callback in entries[:3] + [('saved','My list','bookmark',w.show_saved)]:
+        item = NavButton(text, glyph, callback)
+        w.theme_nav_buttons[key] = item
+        theme_nav.addWidget(item)
+    theme_nav.addStretch()
+    column.addWidget(w.theme_navigation)
+    w.theme_navigation.hide()
     w.top_bar = QWidget()
     top = QHBoxLayout(w.top_bar)
     top.setContentsMargins(10, 6, 5, 0)
@@ -613,10 +819,9 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     body = QHBoxLayout(card)
     body.setContentsMargins(26, 28, 30, 28)
     body.setSpacing(30)
-    w.detail_cover = QLabel()
+    w.detail_cover = AspectImageLabel()
     w.detail_cover.setFixedSize(255, 382)
     w.detail_cover.setAlignment(Qt.AlignCenter)
-    w.detail_cover.setScaledContents(True)
     body.addWidget(w.detail_cover, 0, Qt.AlignTop)
     info = QVBoxLayout()
     info.setSpacing(15)
@@ -849,3 +1054,5 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
             w.breadcrumb.setText('MovieBox  /  ' + {1:'Details',2:'Now playing',3:'Downloads'}.get(index, 'Discover'))
     w.stack.currentChanged.connect(stack_changed)
     QTimer.singleShot(0, lambda: apply_window_material(w, bool(QApplication.instance().property('movieboxDark'))))
+    apply_theme_layout(w)
+    refresh_theme(w, initial_theme(w.state,system_is_dark()))

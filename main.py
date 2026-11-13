@@ -33,7 +33,7 @@ from library_store import LibraryStore
 import release_updates
 from artwork import resized_artwork
 
-APP_VERSION = '0.6.0'
+APP_VERSION = '0.7.0'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -326,11 +326,11 @@ class PosterDelegate(QStyledItemDelegate):
         if highlighted or amount > 0:
             painter.setBrush(Qt.NoBrush)
             if amount > 0:
-                halo = QColor('#48e6b0')
+                halo = QColor(QApplication.instance().property('movieboxAccent') or '#48e6b0')
                 halo.setAlpha(round(38 * amount))
                 painter.setPen(QPen(halo, 5))
                 painter.drawRoundedRect(cover, 12, 12)
-            accent = QColor('#48e6b0')
+            accent = QColor(QApplication.instance().property('movieboxAccent') or '#48e6b0')
             accent.setAlpha(round((150 if highlighted else 0) + (105 if highlighted else 255) * amount))
             painter.setPen(QPen(accent, 1.0 + amount))
             painter.drawRoundedRect(cover, 12, 12)
@@ -814,7 +814,12 @@ class Window(QMainWindow):
         self.category.blockSignals(False)
         first_subject = next((subject for row in self.sections.values() for subject in row), None)
         if first_subject:
-            self.hero.set_subject(first_subject)
+            if not self.hero.slides:
+                self.hero.set_slides([subject for row in self.sections.values() for subject in row])
+        if first_subject and not getattr(self, 'hero_feed_started', False):
+            self.hero_feed_started = True
+            from hero_feed import latest_titles
+            self.submit(lambda: latest_titles(self.api), self.hero.set_slides, message='', failure=lambda _: None)
         active_home = self.nav_buttons['home'].isChecked() or (
             not any(button.isChecked() for button in self.nav_buttons.values())
             and self.heading.text() == 'Find your next favorite'
@@ -1229,7 +1234,7 @@ class Window(QMainWindow):
                 return
             if not decoded.isNull():
                 image = QPixmap.fromImage(decoded)
-                self.detail_cover.setPixmap(image.scaled(self.detail_cover.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                self.detail_cover.setPixmap(image)
         self.submit(lambda: Artwork.fetch_image(url), ready, message='', failure=lambda message: None)
 
     def detail_loaded(self, data, generation):
@@ -1876,8 +1881,8 @@ def main():
         app.setWindowIcon(QIcon(str(icon_path)))
     app.setStyle('Fusion')
     from fluent_ui import stylesheet, system_is_dark
-    mode = load_state().get('appearance', 'dark')
-    app.setStyleSheet(stylesheet(mode == 'dark' or (mode == 'system' and system_is_dark())))
+    from themes import initial_theme
+    app.setStyleSheet(stylesheet(initial_theme(load_state(), system_is_dark())))
     window = Window()
     window.show()
     if args.smoke_test:

@@ -3,7 +3,7 @@ import ctypes
 import json
 import time
 from PySide6.QtCore import QObject, QTimer
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QDialog
 from PySide6.QtMultimedia import QMediaPlayer
 from PySide6.QtCore import QUrl
 from pathlib import Path
@@ -164,6 +164,8 @@ class SmokeTest(QObject):
         from fluent_ui import refresh_theme, open_settings
         def capture_settings():
             dialog = QApplication.activeModalWidget()
+            if dialog is None:
+                dialog = next((widget for widget in self.w.findChildren(QDialog) if widget.windowTitle() == 'MovieBox settings'), None)
             if dialog:
                 dialog.grab().save(str(self.output / 'settings.png'))
                 dialog.reject()
