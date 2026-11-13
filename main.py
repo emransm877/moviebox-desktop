@@ -34,7 +34,7 @@ import release_updates
 from artwork import resized_artwork
 from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
 
-APP_VERSION = '0.8.0'
+APP_VERSION = '0.8.1'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'

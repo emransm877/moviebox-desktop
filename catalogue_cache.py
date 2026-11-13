@@ -24,7 +24,7 @@ class CatalogueCache:
             try:
                 if self.path.stat().st_size<=2_000_000:
                     data=json.loads(self.path.read_text(encoding='utf-8'))
-                    if isinstance(data,dict) and data.get('version')==1 and isinstance(data.get('entries'),dict):self.entries=dict(list(data['entries'].items())[-8:])
+                    if isinstance(data,dict) and data.get('version')==2 and isinstance(data.get('entries'),dict):self.entries=dict(list(data['entries'].items())[-8:])
             except (OSError,ValueError,TypeError):pass
 
     @staticmethod
@@ -47,6 +47,12 @@ class CatalogueCache:
             return value
 
     def put(self,key,entry):
+        with self.lock:
+            # Retain a complete cached page boundary when a long view exceeds
+            # the cache budget. Its existing next-page cursor can then resume
+            # without skipping the pages that were not retained.
+            if len(entry.get('items',[]))>240 and self.entries.get(key):
+                return
         value=copy.deepcopy(entry)
         value['items']=[compact(s) for s in value['items'][:240]]
         with self.lock:
@@ -56,7 +62,7 @@ class CatalogueCache:
     def flush(self):
         if not self.path:return
         with self.lock:
-            payload=json.dumps({'version':1,'entries':self.entries},ensure_ascii=False,separators=(',',':'))
+            payload=json.dumps({'version':2,'entries':self.entries},ensure_ascii=False,separators=(',',':'))
             temporary=self.path.with_name(self.path.name+'.'+uuid.uuid4().hex+'.tmp')
             try:
                 self.path.parent.mkdir(parents=True,exist_ok=True)

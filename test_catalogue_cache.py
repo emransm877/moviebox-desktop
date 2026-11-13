@@ -22,4 +22,11 @@ class CatalogueCacheTests(unittest.TestCase):
     def test_expired_and_invalid_entries_are_ignored(self):
         cache=CatalogueCache();cache.entries={'bad':{'items':[None],'at':time.time()},'old':{'items':[],'at':time.time()-8*86400}}
         self.assertIsNone(cache.get('bad'));self.assertIsNone(cache.get('old'))
+    def test_cache_budget_keeps_the_first_uncached_page_cursor(self):
+        cache=CatalogueCache()
+        items=[{'subjectId':str(i),'title':'Title'} for i in range(240)]
+        cache.put('movies',{'items':items,'at':time.time(),'page':10,'next_page':11,'has_more':True})
+        cache.put('movies',{'items':items+[{'subjectId':'new','title':'New'}],'at':time.time(),'page':11,'next_page':12,'has_more':False})
+        self.assertEqual(cache.get('movies')['next_page'],11)
+        self.assertTrue(cache.get('movies')['has_more'])
 if __name__=='__main__':unittest.main()
