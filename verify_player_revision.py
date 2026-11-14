@@ -48,11 +48,21 @@ try:
     QTest.mouseClick(w.quality.view().viewport(),Qt.LeftButton,pos=w.quality.view().visualRect(w.quality.model().index(w.quality.currentIndex(),0)).center())
     assert w.player.isPlaying()
     checks['clicking_player_dropdown_does_not_toggle_video']=True
-    controls=[w.pause,w.mute_button,w.volume,w.clock,w.quality,w.caption_selector,w.audio_tracks,w.episode_browser_button,w.video_fit_button,w.fullscreen_button,w.subtitle_tools]
+    controls=[w.pause,w.mute_button,w.clock,w.quality,w.caption_selector,w.audio_tracks,w.episode_browser_button,w.video_fit_button,w.fullscreen_button,w.subtitle_tools]
     assert max(x.geometry().center().y() for x in controls)-min(x.geometry().center().y() for x in controls)<=2
     assert all(x.geometry().right()<w.player_controls.width() for x in controls)
     w.player_controls.grab().save(str(OUT/'inline-controls.png'))
     checks['all_player_actions_share_one_row_below_timeline']=True
+    assert not w.volume.isVisible()
+    w.mute_button.setFocus();QTest.keyClick(w.mute_button,Qt.Key_Right)
+    assert not w.volume.isVisible() and QApplication.focusWidget() is not w.volume
+    w.mute_button.setFocus();QTest.keyClick(w.mute_button,Qt.Key_Return);QTest.qWait(180)
+    assert w.volume_menu.isVisible() and w.volume.isVisible() and w.player.isPlaying()
+    before=w.audio.volume();QTest.keyClick(w.volume,Qt.Key_Right);assert w.audio.volume()>before
+    w.volume_menu.grab().save(str(OUT/'volume-popover.png'))
+    QTest.keyClick(w.volume,Qt.Key_Return)
+    assert not w.volume_menu.isVisible() and QApplication.focusWidget() is w.mute_button and w.player.isPlaying()
+    checks['speaker_can_be_bypassed_and_slider_requires_explicit_activation']=True
     w.episode_browser_button.click();QTest.qWait(180)
     assert w.player_episode_panel.isVisible() and w.player.isPlaying()
     assert w.player_season_picker.width()<=180
@@ -92,6 +102,11 @@ try:
     w.toggle_fullscreen()
     w.player.pause();w.stack.setCurrentIndex(1);w.season.showPopup();QTest.qWait(180)
     popup=w.season.view().window();assert popup.width()<=w.season.width()+4,(popup.size(),w.season.size())
+    w.season.hidePopup();w.season.setFixedWidth(480);w.season.showPopup();QTest.qWait(180)
+    assert w.season.view().window().width()<180
+    w.season.view().window().grab().save(str(OUT/'content-sized-dropdown.png'))
+    w.season.hidePopup();w.season.setFixedWidth(140);w.season.showPopup();QTest.qWait(180)
+    popup=w.season.view().window()
     assert popup.windowOpacity()>.98
     popup.grab().save(str(OUT/'season-popup.png'));w.season.hidePopup()
     checks['season_popup_fits_control_width_and_fades_in']=True

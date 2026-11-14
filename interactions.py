@@ -2,7 +2,7 @@
 from PySide6.QtCore import Qt, QEvent, QObject, QTimer, Signal, QPropertyAnimation, QEasingCurve, QPoint, QRectF
 from PySide6.QtGui import QCursor, QWindow, QColor, QPainter
 from themes import palette
-from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QSlider,
+from PySide6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QSlider, QStyleOptionComboBox,
     QStyle, QStyleOptionSlider, QAbstractButton, QLineEdit, QComboBox,
     QAbstractSpinBox, QAbstractItemView, QListWidget, QListView, QStyledItemDelegate)
 
@@ -20,11 +20,11 @@ class ComboItemDelegate(QStyledItemDelegate):
         enabled=bool(option.state & QStyle.State_Enabled)
         selected=enabled and bool(option.state & (QStyle.State_Selected|QStyle.State_MouseOver))
         painter.save();painter.setRenderHint(QPainter.Antialiasing)
-        rect=QRectF(option.rect).adjusted(4,2,-4,-2)
+        rect=QRectF(option.rect).adjusted(2,2,-2,-2)
         painter.setPen(Qt.NoPen);painter.setBrush(QColor(p['select'] if selected else p['surface']))
         painter.drawRoundedRect(rect,8,8)
         painter.setPen(QColor(p['text'] if enabled else p['secondary']));painter.setFont(option.font)
-        text_rect=rect.adjusted(12,0,-34,0)
+        text_rect=rect.adjusted(12,0,-28,0)
         painter.drawText(text_rect,Qt.AlignLeft|Qt.AlignVCenter,option.fontMetrics.elidedText(str(index.data() or ''),Qt.ElideRight,int(text_rect.width())))
         if index.row()==self.combo.currentIndex():
             painter.setPen(QColor(p['accent']));painter.drawText(rect.adjusted(rect.width()-30,0,-8,0),Qt.AlignCenter,'✓')
@@ -41,15 +41,25 @@ class FluentComboBox(QComboBox):
         view.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         view.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         view.setItemDelegate(ComboItemDelegate(view,self))
+        view.setStyleSheet('QListView{padding:0;border:0;outline:0} QListView::item{padding:0;margin:0;min-height:36px}')
         self.setView(view)
         self.setMaxVisibleItems(10)
         self.setFocusPolicy(Qt.StrongFocus)
 
+    def paintEvent(self,event):
+        if self.isEditable():return super().paintEvent(event)
+        option=QStyleOptionComboBox();self.initStyleOption(option);option.currentText=''
+        painter=QPainter(self);self.style().drawComplexControl(QStyle.CC_ComboBox,option,painter,self)
+        p=palette(QApplication.instance().property('movieboxTheme'));painter.setPen(QColor(p['text'] if self.isEnabled() else p['secondary']));painter.setFont(self.font())
+        text_rect=QRectF(self.rect()).adjusted(14,0,-34,0)
+        painter.drawText(text_rect,Qt.AlignLeft|Qt.AlignVCenter,self.fontMetrics().elidedText(self.currentText(),Qt.ElideRight,max(0,int(text_rect.width()))))
+
     def showPopup(self):
-        width=min(460,max(self.width(),max((self.fontMetrics().horizontalAdvance(self.itemText(i)) for i in range(self.count())),default=0)+56))
-        self.view().setMinimumWidth(max(80,width-2));self.view().setMaximumWidth(width)
+        width=min(460,self.screen().availableGeometry().width()-24,max(104,max((self.fontMetrics().horizontalAdvance(self.itemText(i)) for i in range(self.count())),default=0)+46+(10 if self.count()>self.maxVisibleItems() else 0)))
+        self.view().setFixedWidth(width-2)
         super().showPopup()
         popup=self.view().window();screen=self.screen().availableGeometry()
+        popup.setFixedWidth(width)
         height=min(popup.height(),screen.height()-24)
         point=self.mapToGlobal(QPoint(0,self.height()+6))
         if point.y()+height>screen.bottom():point.setY(self.mapToGlobal(QPoint(0,-height-6)).y())
@@ -283,6 +293,15 @@ class InputRouter(QObject):
                     return True
         if isinstance(obj, QWidget):
             top = QWidget.window(obj)
+            if top is w.volume_menu and event.type()==QEvent.KeyPress:
+                focus=QApplication.focusWidget()
+                if event.key() in (Qt.Key_Return,Qt.Key_Enter):
+                    if isinstance(focus,QAbstractButton):focus.click()
+                    else:w.volume_menu.hide();w.mute_button.setFocus()
+                    return True
+                if event.key()==Qt.Key_Escape:
+                    w.volume_menu.hide();w.mute_button.setFocus();return True
+                return False
             belongs = top is w or top in (w.next_up_panel,w.player_episode_panel) or (cinema and top in (stage, w.player_header, w.player_controls))
         elif isinstance(obj, QWindow):
             belongs = QApplication.activeWindow() in (w, stage, w.player_header, w.player_controls, w.next_up_panel, w.player_episode_panel)

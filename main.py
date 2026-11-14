@@ -35,7 +35,7 @@ from artwork import resized_artwork
 from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
 from series_policy import next_episode as following_episode, next_up_at, episode_numbers
 
-APP_VERSION = '0.10.1'
+APP_VERSION = '0.10.2'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -691,10 +691,13 @@ class Window(QMainWindow):
 
     def update_mute_button(self,*_):
         from fluent_ui import icon
-        muted=self.audio.isMuted() or self.audio.volume()==0
-        glyph='player-volume-mute' if muted else 'player-volume-high'
+        muted=self.audio.isMuted()
+        glyph='player-volume-mute' if muted or self.audio.volume()==0 else 'player-volume-high'
         self.mute_button.setProperty('fluentGlyph',glyph);self.mute_button.setIcon(icon(glyph))
-        self.mute_button.setToolTip('Unmute' if muted else 'Mute');self.mute_button.setAccessibleName('Unmute' if muted else 'Mute')
+        self.mute_button.setToolTip('Volume: '+str(round(self.audio.volume()*100))+'%'+(' · Muted' if muted else ''));self.mute_button.setAccessibleName('Volume')
+        self.volume_mute_toggle.setProperty('fluentGlyph',glyph);self.volume_mute_toggle.setIcon(icon(glyph))
+        self.volume_mute_toggle.setToolTip('Unmute' if muted else 'Mute');self.volume_mute_toggle.setAccessibleName('Unmute' if muted else 'Mute')
+        self.volume_level.setText(str(round(self.audio.volume()*100))+'%')
 
     def cycle_video_fit(self):
         from fluent_ui import icon
@@ -1492,6 +1495,7 @@ class Window(QMainWindow):
             self.start_video(video['url'])
 
     def start_video(self, url, position=0):
+        self.volume_menu.hide()
         self.end_handled = False
         self.player_episode_panel.hide()
         self.episode_browser_button.setVisible(bool(self.playing_subject and int(self.playing_subject.get('subjectType') or 0)==2))
@@ -1586,6 +1590,7 @@ class Window(QMainWindow):
         except (ValueError,TypeError):return None
 
     def finish_playback(self,message='Finished'):
+        self.volume_menu.hide()
         self.continuation_starting=False
         self.player_episode_panel.hide()
         for picker in (self.quality,self.audio_tracks,self.caption_selector):picker.hidePopup()
@@ -1901,6 +1906,7 @@ class Window(QMainWindow):
             self.stack.setCurrentIndex(0)
 
     def leave_player(self):
+        self.volume_menu.hide()
         self.player_episode_panel.hide()
         self.next_up_panel.hide()
         if (self.cinema and self.cinema.isVisible()) or self.isFullScreen():
@@ -1914,6 +1920,7 @@ class Window(QMainWindow):
         self.status.setText('Ready to resume')
 
     def stop_for_navigation(self):
+        if hasattr(self,'volume_menu'):self.volume_menu.hide()
         if hasattr(self,'player_episode_panel'):self.player_episode_panel.hide()
         if hasattr(self,'next_up_panel'):self.next_up_panel.hide()
         self.capture_catalogue_view()
@@ -2136,6 +2143,7 @@ class Window(QMainWindow):
             self.start_video(QUrl.fromLocalFile(path).toString())
 
     def closeEvent(self, event):
+        self.volume_menu.hide()
         self.player_episode_panel.hide()
         self.closing=True;self.request_generation+=1;self.play_intent+=1
         self.next_up_panel.hide()
