@@ -35,7 +35,7 @@ from artwork import resized_artwork
 from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
 from series_policy import next_episode as following_episode, next_up_at, episode_numbers
 
-APP_VERSION = '0.9.2'
+APP_VERSION = '0.10.0'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -650,6 +650,8 @@ class Window(QMainWindow):
         self.player.tracksChanged.connect(self.populate_audio_tracks)
         self.player.playbackStateChanged.connect(self.play_state_changed)
         self.volume.valueChanged.connect(lambda volume: self.audio.setVolume(volume / 100))
+        self.audio.mutedChanged.connect(self.update_mute_button)
+        self.audio.volumeChanged.connect(self.update_mute_button)
         self.video.videoSink().videoFrameChanged.connect(self.frame_received)
 
     def frame_received(self, frame):
@@ -682,10 +684,25 @@ class Window(QMainWindow):
         self.pause.setText('')
         self.pause.setToolTip('Pause' if playing else 'Play')
         self.pause.setAccessibleName('Pause' if playing else 'Play')
-        self.pause.setProperty('fluentGlyph','pause' if playing else 'play')
-        self.pause.setIcon(icon('pause' if playing else 'play'))
+        self.pause.setProperty('fluentGlyph','player-pause' if playing else 'player-play')
+        self.pause.setIcon(icon('player-pause' if playing else 'player-play'))
         if playing and self.resume_position:
             QTimer.singleShot(200, self.apply_resume)
+
+    def update_mute_button(self,*_):
+        from fluent_ui import icon
+        muted=self.audio.isMuted() or self.audio.volume()==0
+        glyph='player-volume-mute' if muted else 'player-volume-high'
+        self.mute_button.setProperty('fluentGlyph',glyph);self.mute_button.setIcon(icon(glyph))
+        self.mute_button.setToolTip('Unmute' if muted else 'Mute');self.mute_button.setAccessibleName('Unmute' if muted else 'Mute')
+
+    def cycle_video_fit(self):
+        from fluent_ui import icon
+        modes=[Qt.KeepAspectRatio,Qt.KeepAspectRatioByExpanding,Qt.IgnoreAspectRatio]
+        index=(modes.index(self.video.aspectRatioMode())+1)%3
+        label=['Fit','Crop','Stretch'][index];glyph='player-video-scale-'+['fit','crop','stretch'][index]
+        self.video.setAspectRatioMode(modes[index]);self.video_fit_button.setProperty('fluentGlyph',glyph)
+        self.video_fit_button.setIcon(icon(glyph));self.video_fit_button.setToolTip('Video size: '+label);self.video_fit_button.setAccessibleName('Video size: '+label)
 
     def duration_changed(self, duration):
         self.progress.setMaximum(duration)
@@ -1602,7 +1619,11 @@ class Window(QMainWindow):
         self.player_episode_panel.activateWindow();self.player_season_picker.setFocus()
         self.player_episode_animation=QVariantAnimation(self)
         self.player_episode_animation.setStartValue(.25);self.player_episode_animation.setEndValue(1.0);self.player_episode_animation.setDuration(150)
-        self.player_episode_animation.valueChanged.connect(self.player_episode_panel.setWindowOpacity)
+        origin=self.player_episode_panel.pos()
+        def reveal(value):
+            self.player_episode_panel.setWindowOpacity(value)
+            self.player_episode_panel.move(origin.x()+round((1-value)*32),origin.y())
+        self.player_episode_animation.valueChanged.connect(reveal)
         self.player_episode_animation.start()
 
     def populate_player_episodes(self,*_):

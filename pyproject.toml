@@ -1,6 +1,6 @@
 [project]
 name = "moviebox-desktop"
-version = "0.9.2"
+version = "0.10.0"
 description = "MovieBox Desktop App — an independent native Windows client"
 requires-python = ">=3.11"
 license = "MIT"

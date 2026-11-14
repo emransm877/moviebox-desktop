@@ -48,6 +48,11 @@ try:
     QTest.mouseClick(w.quality.view().viewport(),Qt.LeftButton,pos=w.quality.view().visualRect(w.quality.model().index(w.quality.currentIndex(),0)).center())
     assert w.player.isPlaying()
     checks['clicking_player_dropdown_does_not_toggle_video']=True
+    controls=[w.pause,w.mute_button,w.volume,w.clock,w.quality,w.caption_selector,w.audio_tracks,w.episode_browser_button,w.video_fit_button,w.fullscreen_button,w.subtitle_tools]
+    assert max(x.geometry().center().y() for x in controls)-min(x.geometry().center().y() for x in controls)<=2
+    assert all(x.geometry().right()<w.player_controls.width() for x in controls)
+    w.player_controls.grab().save(str(OUT/'inline-controls.png'))
+    checks['all_player_actions_share_one_row_below_timeline']=True
     w.episode_browser_button.click();QTest.qWait(180)
     assert w.player_episode_panel.isVisible() and w.player.isPlaying()
     w.player_season_picker.setCurrentIndex(1)
@@ -57,8 +62,16 @@ try:
     QTest.keyClick(w.player_season_picker,Qt.Key_Escape)
     assert not w.player_episode_panel.isVisible() and w.player.isPlaying()
     checks['in_player_seasons_browse_and_escape_without_pausing']=True
-    w.toggle_fullscreen();w.open_player_episodes();QTest.qWait(180)
+    w.toggle_fullscreen();QTest.qWait(250);w.cinema.reveal_controls();w.subtitle_tools.click();QTest.qWait(100)
+    assert w.subtitle_tools_menu.isVisible() and w.subtitle_delay.isVisible() and w.player.isPlaying(),(w.subtitle_tools_menu.isVisible(),w.subtitle_delay.isVisible(),w.player.playbackState())
+    QTest.keyClick(w.subtitle_tools_menu,Qt.Key_Escape)
+    assert w.cinema.isVisible() and w.player.isPlaying()
+    checks['fullscreen_more_retains_download_and_subtitle_timing_without_pausing']=True
+    w.cinema.hide_controls(force=True);w.video.setFocus()
+    QTest.keyClick(w.video,Qt.Key_Up);QTest.qWait(180)
     assert w.player_episode_panel.parentWidget() is w.cinema and w.player_episode_panel.isVisible()
+    assert w.player.isPlaying()
+    checks['one_up_press_opens_right_panel_from_hidden_fullscreen_controls']=True
     w.player_season_picker.setCurrentIndex(1);w.player_episode_list.setFocus()
     QTest.keyClick(w.player_episode_list,Qt.Key_Return)
     wait(lambda:w.playing_key.endswith(':2:1') and w.player.isPlaying() and w.frames>2)

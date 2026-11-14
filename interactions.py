@@ -241,7 +241,7 @@ class CinemaWindow(QWidget):
         width, height = w.video.width(), w.video.height()
         origin = w.video.mapToGlobal(w.video.rect().topLeft())
         w.player_header.setGeometry(origin.x() + 20, origin.y() + 14, max(100, width - 40), 48)
-        controls_height = max(138, w.player_controls.sizeHint().height())
+        controls_height = max(78, w.player_controls.sizeHint().height())
         w.player_controls.setGeometry(origin.x() + 20, origin.y() + max(64, height - controls_height - 20), max(100, width - 40), controls_height)
         w.video.position_caption()
         w.position_next_up()
@@ -309,6 +309,9 @@ class InputRouter(QObject):
             return False
         key = event.key()
         focus = QApplication.focusWidget()
+        if key==Qt.Key_Up and w.stack.currentIndex()==2 and not w.player_episode_panel.isVisible() and not QApplication.activePopupWidget() and not isinstance(focus,(QComboBox,QLineEdit,QAbstractSpinBox)) and not w.episode_browser_button.isHidden():
+            if not event.isAutoRepeat():w.open_player_episodes()
+            return True
         if key == Qt.Key_F11:
             w.toggle_fullscreen()
             return True

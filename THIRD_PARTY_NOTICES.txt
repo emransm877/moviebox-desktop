@@ -23,3 +23,6 @@ The Sintel trailer used for local playback verification belongs to the Blender
 Foundation and is licensed under Creative Commons Attribution 3.0.
 Source: https://download.blender.org/durian/trailer/sintel_trailer-1080p.mp4
 It is not bundled with the application.
+
+
+Player icons use the MIT-licensed Stremio Icons by Smart Code Ltd. and contributors. Original vector shapes are retained and recoloured. Source and full notice are bundled in assets/player-icons/SOURCE.json and LICENSE.txt.
