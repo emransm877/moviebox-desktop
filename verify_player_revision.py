@@ -47,6 +47,28 @@ try:
     QTest.mouseClick(w.quality.view().viewport(),Qt.LeftButton,pos=w.quality.view().visualRect(w.quality.model().index(w.quality.currentIndex(),0)).center())
     assert w.player.isPlaying()
     checks['clicking_player_dropdown_does_not_toggle_video']=True
+    w.episode_browser_button.click();QTest.qWait(180)
+    assert w.player_episode_panel.isVisible() and w.player.isPlaying()
+    w.player_season_picker.setCurrentIndex(1)
+    assert w.player.isPlaying() and w.playing_key.endswith(':1:1')
+    assert w.player_episode_list.item(0).data(Qt.UserRole)==(2,1)
+    w.player_episode_panel.grab().save(str(OUT/'desktop-episodes.png'))
+    QTest.keyClick(w.player_season_picker,Qt.Key_Escape)
+    assert not w.player_episode_panel.isVisible() and w.player.isPlaying()
+    checks['in_player_seasons_browse_and_escape_without_pausing']=True
+    w.toggle_fullscreen();w.open_player_episodes();QTest.qWait(180)
+    assert w.player_episode_panel.parentWidget() is w.cinema and w.player_episode_panel.isVisible()
+    w.player_season_picker.setCurrentIndex(1);w.player_episode_list.setFocus()
+    QTest.keyClick(w.player_episode_list,Qt.Key_Return)
+    wait(lambda:w.playing_key.endswith(':2:1') and w.player.isPlaying() and w.frames>2)
+    assert w.cinema.isVisible() and not w.player_episode_panel.isVisible()
+    checks['fullscreen_keyboard_episode_choice_plays_exact_season_and_episode']=True
+    w.open_player_episodes();w.player_season_picker.setCurrentIndex(0)
+    item=w.player_episode_list.item(0)
+    QTest.mouseClick(w.player_episode_list.viewport(),Qt.LeftButton,pos=w.player_episode_list.visualItemRect(item).center())
+    wait(lambda:w.playing_key.endswith(':1:1') and w.player.isPlaying() and w.frames>2)
+    checks['mouse_episode_choice_does_not_pause_or_double_start']=True
+    w.toggle_fullscreen()
     w.player.pause();w.stack.setCurrentIndex(1);w.season.showPopup();QTest.qWait(180)
     popup=w.season.view().window();assert popup.width()<=w.season.width()+4,(popup.size(),w.season.size())
     assert popup.windowOpacity()>.98
@@ -54,7 +76,8 @@ try:
     checks['season_popup_fits_control_width_and_fades_in']=True
     w.stack.setCurrentIndex(2);w.player.play();w.media_status(QMediaPlayer.EndOfMedia)
     wait(lambda:w.playing_key.endswith(':1:2') and w.player.isPlaying() and w.frames>2)
-    checks['series_automatically_starts_next_episode_without_checkbox']=not hasattr(w,'autoplay')
+    assert not hasattr(w,'autoplay') and not hasattr(w,'next_episode')
+    checks['series_automatically_starts_next_episode_without_checkbox']=True
     w.position_changed(w.player.duration()-1000);assert w.next_up_panel.isVisible()
     state=w.player.playbackState();w.dismiss_next_up();assert w.player.playbackState()==state
     checks['next_up_prompt_and_hide_do_not_pause_or_skip_story']=True
@@ -64,6 +87,7 @@ try:
     assert w.player.playbackState()==QMediaPlayer.StoppedState
     checks['final_series_episode_returns_to_details']=True
     detail(movie);w.watch_current();wait(lambda:w.playing_key.startswith('movie:') and w.player.isPlaying() and w.player.position()>200)
+    assert not w.episode_browser_button.isVisible()
     w.media_status(QMediaPlayer.EndOfMedia);assert w.stack.currentIndex()==1
     assert w.state['history']['movie:0:0']['completed'] is True
     checks['movie_end_returns_to_details_and_records_completion']=True

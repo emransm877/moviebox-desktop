@@ -143,6 +143,8 @@ class CinemaWindow(QWidget):
 
     def enter(self):
         w = self.owner
+        drawer_visible=w.player_episode_panel.isVisible()
+        w.player_episode_panel.setParent(self,Qt.Tool|Qt.FramelessWindowHint)
         up_visible=w.next_up_panel.isVisible()
         w.next_up_panel.setParent(self,Qt.Tool|Qt.FramelessWindowHint)
         w.next_up_panel.setAttribute(Qt.WA_ShowWithoutActivating,True)
@@ -167,6 +169,7 @@ class CinemaWindow(QWidget):
         self.activateWindow()
         self.mouse_timer.start()
         if up_visible:w.next_up_panel.show();w.next_up_panel.raise_();w.position_next_up()
+        if drawer_visible:w.player_episode_panel.show();w.position_player_episodes();w.player_episode_panel.raise_()
 
     def check_cursor(self):
         point = QCursor.pos()
@@ -180,6 +183,7 @@ class CinemaWindow(QWidget):
         self.mouse_timer.stop()
         w = self.owner
         up_visible=w.next_up_panel.isVisible()
+        drawer_visible=w.player_episode_panel.isVisible()
         self.hide()
         self.layout_box.removeWidget(w.video)
         for widget in (w.player_header, w.video, w.player_controls):
@@ -203,6 +207,8 @@ class CinemaWindow(QWidget):
         w.next_up_panel.setParent(w,Qt.Tool|Qt.FramelessWindowHint)
         w.next_up_panel.setAttribute(Qt.WA_ShowWithoutActivating,True)
         if up_visible:w.next_up_panel.show();w.next_up_panel.raise_();w.position_next_up()
+        w.player_episode_panel.setParent(w,Qt.Tool|Qt.FramelessWindowHint)
+        if drawer_visible:w.player_episode_panel.show();w.position_player_episodes();w.player_episode_panel.raise_()
 
     def reveal_controls(self):
         if not self.isVisible():
@@ -218,6 +224,8 @@ class CinemaWindow(QWidget):
         self.hide_timer.start(2200)
 
     def hide_controls(self, force=False):
+        if not force and self.owner.player_episode_panel.isVisible():
+            self.hide_timer.start(1000);return
         if not force and (QApplication.mouseButtons() or QApplication.activePopupWidget()):
             self.hide_timer.start(1000)
             return
@@ -237,6 +245,7 @@ class CinemaWindow(QWidget):
         w.player_controls.setGeometry(origin.x() + 20, origin.y() + max(64, height - controls_height - 20), max(100, width - 40), controls_height)
         w.video.position_caption()
         w.position_next_up()
+        w.position_player_episodes()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -267,16 +276,16 @@ class InputRouter(QObject):
                     stage.reveal_controls()
             if isinstance(obj, QWindow) and obj.type() in (Qt.Window,Qt.SubWindow) and event.type() == QEvent.MouseButtonDblClick and event.button() == Qt.LeftButton:
                 video_point = w.video.mapFromGlobal(point)
-                panels = (w.player_header, w.player_controls, w.next_up_panel)
+                panels = (w.player_header, w.player_controls, w.next_up_panel, w.player_episode_panel)
                 over_panel = any(p.isVisible() and p.rect().contains(p.mapFromGlobal(point)) for p in panels)
                 if w.stack.currentIndex() == 2 and w.video.rect().contains(video_point) and not over_panel:
                     w.video_double_click()
                     return True
         if isinstance(obj, QWidget):
             top = QWidget.window(obj)
-            belongs = top is w or top is w.next_up_panel or (cinema and top in (stage, w.player_header, w.player_controls))
+            belongs = top is w or top in (w.next_up_panel,w.player_episode_panel) or (cinema and top in (stage, w.player_header, w.player_controls))
         elif isinstance(obj, QWindow):
-            belongs = QApplication.activeWindow() in (w, stage, w.player_header, w.player_controls, w.next_up_panel)
+            belongs = QApplication.activeWindow() in (w, stage, w.player_header, w.player_controls, w.next_up_panel, w.player_episode_panel)
         else:
             return False
         if not belongs:
@@ -284,7 +293,7 @@ class InputRouter(QObject):
         if event.type()==QEvent.MouseButtonRelease and event.button()==Qt.LeftButton and w.stack.currentIndex()==2:
             if QApplication.activePopupWidget():return False
             point=event.globalPosition().toPoint()
-            over_controls=any(panel.isVisible() and panel.rect().contains(panel.mapFromGlobal(point)) for panel in (w.player_header,w.player_controls,w.next_up_panel))
+            over_controls=any(panel.isVisible() and panel.rect().contains(panel.mapFromGlobal(point)) for panel in (w.player_header,w.player_controls,w.next_up_panel,w.player_episode_panel))
             inside=w.video.rect().contains(w.video.mapFromGlobal(point))
             source_video=(isinstance(obj,QWindow) and obj.type() in (Qt.Window,Qt.SubWindow)) or (isinstance(obj,QWidget) and (obj is w.video or w.video.isAncestorOf(obj)))
             if source_video and inside and not over_controls:
@@ -316,11 +325,11 @@ class InputRouter(QObject):
             w.search.setFocus()
             w.search.selectAll()
             return True
-        if cinema or (w.stack.currentIndex()==2 and w.next_up_panel.isVisible()):
-            stage.reveal_controls()
+        if cinema or (w.stack.currentIndex()==2 and (w.next_up_panel.isVisible() or w.player_episode_panel.isVisible())):
+            if cinema:stage.reveal_controls()
             if key in (Qt.Key_Tab, Qt.Key_Backtab):
                 controls = []
-                for panel in (w.player_header, w.player_controls, w.next_up_panel):
+                for panel in ((w.player_episode_panel,) if w.player_episode_panel.isVisible() else (w.player_header, w.player_controls, w.next_up_panel)):
                     controls.extend(child for child in panel.findChildren(QWidget)
                         if child.isVisible() and child.isEnabled() and child.focusPolicy() & Qt.TabFocus)
                 if controls:
@@ -357,6 +366,7 @@ class InputRouter(QObject):
                     return True
             QWidget.window(focus).focusNextPrevChild(key in (Qt.Key_Right, Qt.Key_Down))
             return True
+        if focus and w.player_episode_panel.isAncestorOf(focus):return False
         typing = isinstance(focus, (QLineEdit, QAbstractSpinBox, QComboBox))
         if w.stack.currentIndex() == 2 and not typing and not isinstance(focus, QAbstractButton):
             if key == Qt.Key_Space:

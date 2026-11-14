@@ -160,7 +160,9 @@ def stylesheet(selection=True):
     QMenu{background:SURFACE;color:TEXT;border:1px solid LINE;padding:5px}
     QMenu::item{padding:8px 26px;border-radius:6px}
     QMenu::item:selected{background:SELECT}
-    QFrame#detailCard,QFrame#controlBar{background:SURFACE;border:1px solid LINE;border-radius:16px}
+    QFrame#detailCard,QFrame#controlBar,QFrame#playerEpisodePanel{background:SURFACE;border:1px solid LINE;border-radius:16px}
+    QListWidget#playerEpisodes::item{padding:10px;margin:3px}
+    QListWidget#playerEpisodes::item:selected{background:SELECT;color:TEXT}
     QListWidget#episodeCards::item{padding:8px;margin:3px;background:SURFACE;border:1px solid LINE;border-radius:8px}
     QListWidget#episodeCards::item:selected{background:SELECT;border-color:#48e6b0;color:TEXT}
     '''
@@ -963,9 +965,10 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     w.clock.setObjectName('muted')
     transport.addWidget(w.clock)
     transport.addStretch()
-    w.next_episode = action('Next', w.play_next_episode, 'next', quiet=True)
+    w.episode_browser_button = action('Seasons & episodes',w.open_player_episodes,'series',quiet=True)
+    w.episode_browser_button.hide()
+    transport.addWidget(w.episode_browser_button)
     w.download_button = action('Download', w.download_current, 'download', quiet=True)
-    transport.addWidget(w.next_episode)
     transport.addWidget(w.download_button)
     w.volume = QSlider(Qt.Horizontal)
     w.volume.setRange(0, 100)
@@ -1038,6 +1041,31 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     next_actions.addWidget(action('Hide',w.dismiss_next_up))
     next_layout.addLayout(next_actions)
     w.next_up_panel.hide()
+
+    w.player_episode_panel=QFrame(w,Qt.Tool|Qt.FramelessWindowHint)
+    w.player_episode_panel.setObjectName('playerEpisodePanel')
+    w.player_episode_panel.setCursor(Qt.ArrowCursor)
+    drawer=QVBoxLayout(w.player_episode_panel)
+    drawer.setContentsMargins(22,20,22,20);drawer.setSpacing(16)
+    drawer_header=QHBoxLayout()
+    drawer_title=QLabel('Seasons & episodes');drawer_title.setStyleSheet('font-size:20px;font-weight:600')
+    drawer_header.addWidget(drawer_title);drawer_header.addStretch()
+    drawer_header.addWidget(action('Close',w.close_player_episodes))
+    drawer.addLayout(drawer_header)
+    w.player_season_picker=FluentComboBox()
+    w.player_season_picker.setAccessibleName('Player season')
+    w.player_season_picker.currentIndexChanged.connect(w.populate_player_episodes)
+    drawer.addWidget(w.player_season_picker)
+    w.player_episode_list=QListWidget()
+    w.player_episode_list.setObjectName('playerEpisodes')
+    w.player_episode_list.setAccessibleName('Player episodes')
+    w.player_episode_list.itemClicked.connect(w.play_player_episode)
+    w.player_episode_list.itemActivated.connect(w.play_player_episode)
+    drawer.addWidget(w.player_episode_list,1)
+    drawer_hint=QLabel('Choose an episode to play. Browsing keeps your video playing.')
+    drawer_hint.setWordWrap(True);drawer_hint.setObjectName('muted')
+    drawer.addWidget(drawer_hint)
+    w.player_episode_panel.hide()
 
     downloads_page = QWidget()
     download_layout = QVBoxLayout(downloads_page)

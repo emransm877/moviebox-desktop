@@ -1,8 +1,10 @@
 # Player behavior
 
-Series advance automatically through available episodes and across season boundaries. There is no autoplay checkbox. At the final episode, a movie end, or an unavailable/undecodable automatic next source, playback returns to title details. Explicitly opening a completed title starts it again from zero.
+Series advance automatically through available episodes and across season boundaries. There is no autoplay checkbox or permanent Next transport button. At the final episode, a movie end, or an unavailable/undecodable automatic next source, playback returns to title details. Explicitly opening a completed title starts it again from zero.
 
 The next-up card uses a valid source `creditsStartMs` marker when available. Without one it appears during the final 30 seconds (or final 10% of short videos, at least 5 seconds). It never infers a credits boundary or automatically cuts off the story. The viewer may choose Play next or Hide; otherwise the current video finishes. Next-source metadata is prepared while the current video continues, without starting a second decoder.
+
+Windows: the Seasons & episodes player button opens a right-side panel for series in windowed and true fullscreen playback. Browsing seasons does not pause or change the current episode. Choose an episode by mouse or Enter to start it, or close with Escape. Movies hide the button.
 
 Windows: one video click toggles playback immediately; double-click toggles true fullscreen while preserving the prior playback state. Dropdowns fit their content/control width and fade in when Windows animations are enabled.
 

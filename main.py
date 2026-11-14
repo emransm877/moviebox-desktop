@@ -33,9 +33,9 @@ from library_store import LibraryStore
 import release_updates
 from artwork import resized_artwork
 from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
-from series_policy import next_episode as following_episode, next_up_at
+from series_policy import next_episode as following_episode, next_up_at, episode_numbers
 
-APP_VERSION = '0.9.0'
+APP_VERSION = '0.9.1'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -1473,6 +1473,8 @@ class Window(QMainWindow):
 
     def start_video(self, url, position=0):
         self.end_handled = False
+        self.player_episode_panel.hide()
+        self.episode_browser_button.setVisible(bool(self.playing_subject and int(self.playing_subject.get('subjectType') or 0)==2))
         self.next_up_panel.hide()
         self.end_prebuffer()
         self.last_progress_checkpoint = None
@@ -1488,7 +1490,6 @@ class Window(QMainWindow):
         self.frames = 0
         self.stack.setCurrentIndex(2)
         self.download_button.setEnabled(bool(self.current_stream) and not self.preview_limit and bool(self.playing_subject))
-        self.next_episode.setEnabled(bool(self.next_episode_target()))
         if not reuse and url.startswith(('https://', 'http://')):
             headers = (self.current_stream or {}).get('headers') or {'User-Agent': 'Mozilla/5.0'}
             if self.current_stream and self.current_stream.get('signHeaderKey') and self.current_stream.get('signCookie'):
@@ -1566,13 +1567,14 @@ class Window(QMainWindow):
 
     def finish_playback(self,message='Finished'):
         self.continuation_starting=False
+        self.player_episode_panel.hide()
         for picker in (self.quality,self.audio_tracks,self.caption_selector):picker.hidePopup()
         self.save_progress();self.next_up_panel.hide()
         if self.cinema and self.cinema.isVisible():self.cinema.leave()
         self.player.stop();self.prepared_media=None
         self.stack.setCurrentIndex(self.playback_return_view if self.playback_return_view in (0,1,3) else (1 if self.current else 0))
         self.detail_notice.setText(message);self.status.setText(message)
-        self.watch.setEnabled(bool(self.current));self.next_episode.setEnabled(False)
+        self.watch.setEnabled(bool(self.current))
 
     def playback_error(self,error,text):
         if self.continuation_starting:
@@ -1581,6 +1583,60 @@ class Window(QMainWindow):
 
     def dismiss_next_up(self):
         self.next_up_dismissed_key=self.playing_key;self.next_up_panel.hide()
+
+    def open_player_episodes(self):
+        if not self.playing_subject or int(self.playing_subject.get('subjectType') or 0)!=2:return
+        records=((self.detail_data or {}).get('resource') or {}).get('seasons') or []
+        if not records:return
+        _,season,episode=self.playing_key.rsplit(':',2)
+        self.player_season_picker.blockSignals(True);self.player_season_picker.clear()
+        for record in sorted(records,key=lambda item:int(item.get('se') or 0)):
+            if int(record.get('se') or 0)>0:self.player_season_picker.addItem('Season '+str(record['se']),record)
+        for row in range(self.player_season_picker.count()):
+            if int(self.player_season_picker.itemData(row).get('se') or 0)==int(season):self.player_season_picker.setCurrentIndex(row);break
+        self.player_season_picker.blockSignals(False);self.populate_player_episodes()
+        self.next_up_panel.hide();self.player_episode_panel.show();self.position_player_episodes();self.player_episode_panel.raise_()
+        self.player_episode_panel.activateWindow();self.player_season_picker.setFocus()
+        self.player_episode_animation=QVariantAnimation(self)
+        self.player_episode_animation.setStartValue(.25);self.player_episode_animation.setEndValue(1.0);self.player_episode_animation.setDuration(150)
+        self.player_episode_animation.valueChanged.connect(self.player_episode_panel.setWindowOpacity)
+        self.player_episode_animation.start()
+
+    def populate_player_episodes(self,*_):
+        record=self.player_season_picker.currentData() or {};self.player_episode_list.clear()
+        current=self.playing_key.rsplit(':',2)[-2:] if self.playing_key else []
+        for number in episode_numbers(record):
+            active=current==[str(record.get('se')),str(number)]
+            item=QListWidgetItem(f'Episode {number}'+('  ·  Playing' if active else ''))
+            item.setData(Qt.UserRole,(int(record.get('se') or 0),number));item.setSizeHint(QSize(300,48))
+            self.player_episode_list.addItem(item)
+            if active:self.player_episode_list.setCurrentItem(item)
+        if self.player_episode_list.currentRow()<0 and self.player_episode_list.count():self.player_episode_list.setCurrentRow(0)
+        self.player_episode_list.scrollToItem(self.player_episode_list.currentItem()) if self.player_episode_list.currentItem() else None
+
+    def close_player_episodes(self):
+        if hasattr(self,'player_episode_animation'):self.player_episode_animation.stop()
+        self.player_episode_panel.hide()
+        if self.cinema and self.cinema.isVisible():self.cinema.activateWindow();self.cinema.reveal_controls()
+        else:self.activateWindow()
+        self.episode_browser_button.setFocus()
+
+    def position_player_episodes(self):
+        panel=getattr(self,'player_episode_panel',None)
+        if panel is None or not panel.isVisible():return
+        origin=self.video.mapToGlobal(QPoint(0,0));width=min(440,max(300,self.video.width()-24));height=max(180,self.video.height()-24)
+        panel.resize(width,height);panel.move(origin.x()+self.video.width()-width-12,origin.y()+12)
+
+    def play_player_episode(self,item):
+        if not self.player_episode_panel.isVisible():return
+        season,episode=item.data(Qt.UserRole)
+        if self.playing_key.endswith(f':{season}:{episode}'):
+            self.close_player_episodes();return
+        self.close_player_episodes()
+        for row in range(self.season.count()):
+            if int((self.season.itemData(row) or {}).get('se') or 0)==season:self.season.setCurrentIndex(row);break
+        row=self.episode.findData(episode)
+        if row>=0:self.episode.setCurrentIndex(row);self.watch_current(continuation=True)
 
     def position_next_up(self):
         if not hasattr(self,'next_up_panel') or not self.next_up_panel.isVisible():return
@@ -1591,7 +1647,7 @@ class Window(QMainWindow):
     def update_next_up(self,position):
         target=self.next_episode_target()
         threshold=next_up_at(self.player.duration(),self.current_stream)
-        show=self.stack.currentIndex()==2 and target and threshold is not None and position>=threshold and self.next_up_dismissed_key!=self.playing_key
+        show=self.stack.currentIndex()==2 and not self.player_episode_panel.isVisible() and target and threshold is not None and position>=threshold and self.next_up_dismissed_key!=self.playing_key
         if not show:self.next_up_panel.hide();return
         marker=(self.playing_key,target)
         if getattr(self,'next_prefetch_marker',None)!=marker:
@@ -1811,6 +1867,7 @@ class Window(QMainWindow):
             self.showNormal() if self.isFullScreen() else self.showFullScreen()
 
     def escape(self):
+        if self.player_episode_panel.isVisible():self.close_player_episodes();return
         if (self.cinema and self.cinema.isVisible()) or self.isFullScreen():
             self.toggle_fullscreen()
         elif self.stack.currentIndex() == 2:
@@ -1819,6 +1876,7 @@ class Window(QMainWindow):
             self.stack.setCurrentIndex(0)
 
     def leave_player(self):
+        self.player_episode_panel.hide()
         self.next_up_panel.hide()
         if (self.cinema and self.cinema.isVisible()) or self.isFullScreen():
             self.toggle_fullscreen()
@@ -1831,6 +1889,7 @@ class Window(QMainWindow):
         self.status.setText('Ready to resume')
 
     def stop_for_navigation(self):
+        if hasattr(self,'player_episode_panel'):self.player_episode_panel.hide()
         if hasattr(self,'next_up_panel'):self.next_up_panel.hide()
         self.capture_catalogue_view()
         if hasattr(self,'history_toolbar'):
@@ -2052,6 +2111,7 @@ class Window(QMainWindow):
             self.start_video(QUrl.fromLocalFile(path).toString())
 
     def closeEvent(self, event):
+        self.player_episode_panel.hide()
         self.closing=True;self.request_generation+=1;self.play_intent+=1
         self.next_up_panel.hide()
         self.capture_catalogue_view()
@@ -2093,12 +2153,14 @@ class Window(QMainWindow):
             self.detail_cover.setFixedSize(210, 315) if compact else self.detail_cover.setFixedSize(255, 382)
             self.detail_title.setStyleSheet('font-size:28px' if compact else 'font-size:33px')
             self.position_next_up()
+            self.position_player_episodes()
 
     def moveEvent(self, event):
         super().moveEvent(event)
         if hasattr(self, 'video'):
             self.video.position_caption()
             self.position_next_up()
+            self.position_player_episodes()
 
 
 
