@@ -35,7 +35,7 @@ from artwork import resized_artwork
 from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
 from series_policy import next_episode as following_episode, next_up_at, episode_numbers
 
-APP_VERSION = '0.10.2'
+APP_VERSION = '0.10.3'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -943,6 +943,7 @@ class Window(QMainWindow):
             row = picker.findData(selected.get(field))
             picker.setCurrentIndex(max(0, row))
             picker.blockSignals(False)
+            picker.setFixedWidth(max(int(picker.property('catalogueMinimumWidth') or 84),picker.fontMetrics().horizontalAdvance(picker.currentText())+56))
 
     def apply_catalogue_filters(self):
         if not self.catalogue_kind:

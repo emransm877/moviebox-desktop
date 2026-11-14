@@ -55,7 +55,7 @@ class FluentComboBox(QComboBox):
         painter.drawText(text_rect,Qt.AlignLeft|Qt.AlignVCenter,self.fontMetrics().elidedText(self.currentText(),Qt.ElideRight,max(0,int(text_rect.width()))))
 
     def showPopup(self):
-        width=min(460,self.screen().availableGeometry().width()-24,max(104,max((self.fontMetrics().horizontalAdvance(self.itemText(i)) for i in range(self.count())),default=0)+46+(10 if self.count()>self.maxVisibleItems() else 0)))
+        width=min(460,self.screen().availableGeometry().width()-24,max(104,max((self.fontMetrics().horizontalAdvance(self.itemText(i)) for i in range(self.count())),default=0)+50+(10 if self.count()>self.maxVisibleItems() else 0)))
         self.view().setFixedWidth(width-2)
         super().showPopup()
         popup=self.view().window();screen=self.screen().availableGeometry()
@@ -309,6 +309,7 @@ class InputRouter(QObject):
             return False
         if not belongs:
             return False
+        if event.type()==QEvent.FocusIn and isinstance(obj,(QAbstractButton,QComboBox)) and w.player_controls.isAncestorOf(obj):self.last_player_control=obj
         if event.type()==QEvent.MouseButtonRelease and event.button()==Qt.LeftButton and w.stack.currentIndex()==2:
             if QApplication.activePopupWidget():return False
             point=event.globalPosition().toPoint()
@@ -331,6 +332,20 @@ class InputRouter(QObject):
         if key==Qt.Key_Up and cinema and not stage.controls_visible and w.stack.currentIndex()==2 and not w.player_episode_panel.isVisible() and not QApplication.activePopupWidget() and not isinstance(focus,(QComboBox,QLineEdit,QAbstractSpinBox)) and not w.episode_browser_button.isHidden():
             if not event.isAutoRepeat():w.open_player_episodes()
             return True
+        if w.stack.currentIndex()==2 and not QApplication.activePopupWidget() and not w.player_episode_panel.isVisible():
+            row=[w.player_transport_layout.itemAt(i).widget() for i in range(w.player_transport_layout.count())]
+            row=[item for item in row if isinstance(item,(QAbstractButton,QComboBox)) and item.isVisible() and item.isEnabled()]
+            if focus in row and key in (Qt.Key_Left,Qt.Key_Right,Qt.Key_Up,Qt.Key_Down):
+                self.last_player_control=focus
+                if key in (Qt.Key_Left,Qt.Key_Right):
+                    target=row[max(0,min(len(row)-1,row.index(focus)+(1 if key==Qt.Key_Right else -1)))]
+                    target.setFocus(Qt.OtherFocusReason);self.last_player_control=target
+                elif key==Qt.Key_Up:w.progress.setFocus(Qt.OtherFocusReason)
+                return True
+            if focus is w.progress and key==Qt.Key_Down and row:
+                target=getattr(self,'last_player_control',None)
+                (target if target in row else row[0]).setFocus(Qt.OtherFocusReason)
+                return True
         if key == Qt.Key_F11:
             w.toggle_fullscreen()
             return True

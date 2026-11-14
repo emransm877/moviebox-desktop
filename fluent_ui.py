@@ -800,28 +800,16 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     filter_layout.setContentsMargins(0, 0, 0, 0)
     filter_layout.setSpacing(10)
     w.catalogue_filter_fields = {}
-    for columns in ((('genre','Genre'),('year','Year'),('country','Country')),
-                    (('classify','Audio / edition'),('sort','Sort by'),('rate','Minimum rating'))):
-        filter_row = QHBoxLayout()
-        filter_row.setSpacing(12)
-        for field, label in columns:
-            block = QVBoxLayout()
-            block.setSpacing(4)
-            caption = QLabel(label)
-            caption.setObjectName('muted')
-            block.addWidget(caption)
-            picker = FluentComboBox()
-            picker.setAccessibleName(label)
-            picker.setToolTip('Filter catalogue by ' + label.lower())
-            picker.setMinimumWidth(130)
-            picker.view().setMinimumWidth(240)
-            picker.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-            picker.setMinimumContentsLength(12)
-            picker.addItem('Loading…', '')
-            block.addWidget(picker)
-            w.catalogue_filter_fields[field] = picker
-            filter_row.addLayout(block, 1)
-        filter_layout.addLayout(filter_row)
+    filter_row=QHBoxLayout();filter_row.setSpacing(10)
+    for field,label in (('genre','Genre'),('year','Year'),('country','Country'),('classify','Audio / edition'),('sort','Sort by'),('rate','Minimum rating')):
+        block=QVBoxLayout();block.setSpacing(4)
+        caption=QLabel(label);caption.setObjectName('muted');caption.setMinimumHeight(18);block.addWidget(caption)
+        picker=FluentComboBox();picker.setAccessibleName(label);picker.setToolTip('Filter catalogue by '+label.lower())
+        minimum=max(84,caption.fontMetrics().horizontalAdvance(label)+12);picker.setProperty('catalogueMinimumWidth',minimum)
+        def fit_filter(*_,control=picker,minimum=minimum):control.setFixedWidth(max(minimum,control.fontMetrics().horizontalAdvance(control.currentText())+56))
+        picker.currentIndexChanged.connect(fit_filter);picker.addItem('Loading…','');fit_filter()
+        block.addWidget(picker);w.catalogue_filter_fields[field]=picker;filter_row.addLayout(block)
+    filter_row.addStretch();filter_layout.addLayout(filter_row)
     filter_actions = QHBoxLayout()
     filter_actions.addStretch()
     w.catalogue_apply = action('Apply filters', w.apply_catalogue_filters, primary=True)
@@ -990,6 +978,7 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     w.progress.seekRequested.connect(w.seek_to)
     control_layout.addWidget(w.progress)
     transport = QHBoxLayout()
+    w.player_transport_layout=transport
     transport.setSpacing(5)
     w.pause = action('Pause',w.toggle_pause,'player-pause',quiet=True,icon_only=True)
     transport.addWidget(w.pause)

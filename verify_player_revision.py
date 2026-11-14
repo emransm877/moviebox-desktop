@@ -55,7 +55,17 @@ try:
     checks['all_player_actions_share_one_row_below_timeline']=True
     assert not w.volume.isVisible()
     w.mute_button.setFocus();QTest.keyClick(w.mute_button,Qt.Key_Right)
-    assert not w.volume.isVisible() and QApplication.focusWidget() is not w.volume
+    assert not w.volume.isVisible() and QApplication.focusWidget() is w.quality
+    row=[w.player_transport_layout.itemAt(i).widget() for i in range(w.player_transport_layout.count())]
+    from PySide6.QtWidgets import QAbstractButton,QComboBox
+    row=[item for item in row if isinstance(item,(QAbstractButton,QComboBox)) and item.isVisible() and item.isEnabled()]
+    quality_index=w.quality.currentIndex();row[0].setFocus()
+    for target in row[1:]:QTest.keyClick(QApplication.focusWidget(),Qt.Key_Right);assert QApplication.focusWidget() is target
+    for target in reversed(row[:-1]):QTest.keyClick(QApplication.focusWidget(),Qt.Key_Left);assert QApplication.focusWidget() is target
+    w.audio_tracks.setFocus();QTest.keyClick(w.audio_tracks,Qt.Key_Up);assert QApplication.focusWidget() is w.progress
+    QTest.keyClick(w.progress,Qt.Key_Down);assert QApplication.focusWidget() is w.audio_tracks
+    assert w.quality.currentIndex()==quality_index and w.player.isPlaying()
+    checks['horizontal_player_navigation_stays_in_row_and_seek_down_restores_last_icon']=True
     w.mute_button.setFocus();QTest.keyClick(w.mute_button,Qt.Key_Return);QTest.qWait(180)
     assert w.volume_menu.isVisible() and w.volume.isVisible() and w.player.isPlaying()
     before=w.audio.volume();QTest.keyClick(w.volume,Qt.Key_Right);assert w.audio.volume()>before

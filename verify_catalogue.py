@@ -78,6 +78,10 @@ try:
     assert api.calls[-1][1]['channelId'] == 1
     assert set(window.catalogue_filter_fields) == {'genre','year','country','classify','sort','rate'}
     assert window.catalogue_filter_panel.isVisible()
+    filters=list(window.catalogue_filter_fields.values())
+    assert max(control.mapTo(window.catalogue_filter_panel,control.rect().center()).y() for control in filters)-min(control.mapTo(window.catalogue_filter_panel,control.rect().center()).y() for control in filters)<3
+    assert all(control.fontMetrics().elidedText(control.currentText(),Qt.ElideRight,control.width()-48)==control.currentText() for control in filters)
+    window.catalogue_filter_panel.grab().save(str(OUTPUT/'single-filter-row.png'))
     checks['movie_channel_uses_live_catalogue_adapter'] = True
 
     delegate = window.poster_delegate
