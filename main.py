@@ -33,8 +33,9 @@ from library_store import LibraryStore
 import release_updates
 from artwork import resized_artwork
 from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
+from series_policy import next_episode as following_episode, next_up_at
 
-APP_VERSION = '0.8.1'
+APP_VERSION = '0.9.0'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -474,6 +475,13 @@ class Window(QMainWindow):
         self.catalogue_pending_refresh_key = ''
         self.history_editing = False
         self.history_undo = {}
+        self.end_handled = False
+        self.playback_return_view = None
+        self.continuation_starting = False
+        self.next_up_dismissed_key = ''
+        self.video_click_time = 0
+        self.video_click_state = None
+        self.suppress_video_release = False
         self.catalogue_selections = self.state.get('catalogue_filters', {})
         if not isinstance(self.catalogue_selections, dict):
             self.catalogue_selections = {}
@@ -483,7 +491,7 @@ class Window(QMainWindow):
         self.build_player()
         self.setup_optional_updates()
         self.input_router = InputRouter(self)
-        self.video.doubleClicked.connect(self.toggle_fullscreen)
+        self.video.doubleClicked.connect(self.video_double_click)
         self.setup_suggestions()
         self.autosave = QTimer(self)
         self.autosave.timeout.connect(self.save_progress)
@@ -571,6 +579,8 @@ class Window(QMainWindow):
             self.check_optional_updates()
 
     def submit(self, fn, done, *, message='Loading…', failure=None):
+        if getattr(self,'closing',False):
+            future=Future();future.cancel();return future
         future = self.pool.submit(fn)
         self.await_future(future, done, failure)
         if message:
@@ -635,7 +645,7 @@ class Window(QMainWindow):
         self.player.positionChanged.connect(self.position_changed)
         self.player.seekableChanged.connect(lambda ready: self.apply_resume() if ready else None)
         self.player.durationChanged.connect(self.duration_changed)
-        self.player.errorOccurred.connect(lambda error, text: self.show_error('Playback error: ' + text))
+        self.player.errorOccurred.connect(self.playback_error)
         self.player.mediaStatusChanged.connect(self.media_status)
         self.player.tracksChanged.connect(self.populate_audio_tracks)
         self.player.playbackStateChanged.connect(self.play_state_changed)
@@ -644,6 +654,7 @@ class Window(QMainWindow):
 
     def frame_received(self, frame):
         if frame.isValid():
+            if self.stack.currentIndex()==2:self.continuation_starting=False
             self.frames += 1
             self.last_frame = frame
             if getattr(self, 'prebuffering', False) and self.stack.currentIndex() == 1:
@@ -1173,6 +1184,7 @@ class Window(QMainWindow):
         previous_duration = float((self.state['history'].get(base_key) or {}).get('duration') or 0) / 1000
         def resolve():
             streams = self.api.playback(subject, season, episode)
+            if not streams:raise ValueError('No playable source is available for this episode.')
             if subject.get('_audio_restart_for_cut'):
                 streams = full_runtime_streams(streams)
             elif base_id and str(base_id) != str(subject['subjectId']):
@@ -1380,7 +1392,9 @@ class Window(QMainWindow):
             self.episode.setCurrentIndex(index)
             self.watch_current()
 
-    def watch_current(self):
+    def watch_current(self, continuation=False):
+        continuation = continuation is True
+        self.continuation_starting=continuation
         if not self.current or not self.detail_data:
             return
         subject = self.selected_playback_subject().copy()
@@ -1395,6 +1409,8 @@ class Window(QMainWindow):
         if policy.get('requiredVipLevel', 0) > 0 and (not episode or episode > policy.get('freeEpisodeCount', 0)):
             preview = int(policy.get('previewSeconds') or 0)
             if preview <= 0:
+                if continuation:
+                    self.finish_playback('The next episode is not available for playback.');return
                 self.show_error('This selection requires a MovieBox membership. No account is signed in to this preview.')
                 return
             self.preview_limit = preview * 1000
@@ -1403,10 +1419,14 @@ class Window(QMainWindow):
         def ready(streams):
             if generation != self.request_generation or intent != self.play_intent:
                 return
+            if not streams:
+                fail('No playable source is available for the next episode.');return
             self.save_progress()
             self.watch.setEnabled(True)
             self.playing_subject = subject
+            self.playback_return_view = 1
             self.playing_key = f'{subject["subjectId"]}:{season}:{episode}'
+            self.continuation_starting=continuation
             self.now_title.setText(subject['title'] + (f' · S{season} E{episode}' if season else ''))
             self.streams = streams
             self.current_stream = self._initial_stream(streams)
@@ -1422,7 +1442,7 @@ class Window(QMainWindow):
             self.quality.blockSignals(False)
             base_key = str(subject.get('_audio_base_id') or subject['subjectId']) + f':{season}:{episode}'
             old = self.state['history'].get(self.playing_key) or self.state['history'].get(base_key) or {}
-            position = int(old.get('position') or 0)
+            position = 0 if old.get('completed') else int(old.get('position') or 0)
             if subject.get('_audio_restart_for_cut') and str(old.get('audio_subject_id') or '') != str(subject['subjectId']):
                 position = 0
             self.start_video(self.current_stream['url'], position)
@@ -1433,12 +1453,15 @@ class Window(QMainWindow):
             QTimer.singleShot(2500, self.adapt_quality)
             self.playback_ready.emit()
         def fail(message):
+            if generation != self.request_generation or intent != self.play_intent:return
             self.watch.setEnabled(True)
-            self.show_error(message)
+            if continuation:self.finish_playback('The next episode could not be played. '+message)
+            else:self.show_error(message)
         self.status.setText('Preparing playback…')
         self.await_future(self._stream_future(subject, season, episode), ready, fail)
 
     def watch_trailer(self):
+        self.playback_return_view = 1
         video = ((self.current.get('trailer') or {}).get('videoAddress') or {})
         if video.get('url'):
             self.playing_subject, self.playing_key = None, ''
@@ -1449,6 +1472,8 @@ class Window(QMainWindow):
             self.start_video(video['url'])
 
     def start_video(self, url, position=0):
+        self.end_handled = False
+        self.next_up_panel.hide()
         self.end_prebuffer()
         self.last_progress_checkpoint = None
         self.resume_paused = False
@@ -1463,7 +1488,7 @@ class Window(QMainWindow):
         self.frames = 0
         self.stack.setCurrentIndex(2)
         self.download_button.setEnabled(bool(self.current_stream) and not self.preview_limit and bool(self.playing_subject))
-        self.next_episode.setEnabled(bool(self.playing_subject) and self.episode.currentIndex() < self.episode.count() - 1)
+        self.next_episode.setEnabled(bool(self.next_episode_target()))
         if not reuse and url.startswith(('https://', 'http://')):
             headers = (self.current_stream or {}).get('headers') or {'User-Agent': 'Mozilla/5.0'}
             if self.current_stream and self.current_stream.get('signHeaderKey') and self.current_stream.get('signCookie'):
@@ -1486,9 +1511,13 @@ class Window(QMainWindow):
         elif status == QMediaPlayer.BufferingMedia:
             self.status.setText('Buffering…')
         elif status == QMediaPlayer.EndOfMedia:
-            self.status.setText('Finished')
-            if self.autoplay.isChecked() and self.next_episode.isEnabled():
-                QTimer.singleShot(500, self.play_next_episode)
+            if self.end_handled:return
+            self.end_handled=True
+            self.save_progress();self.next_up_panel.hide()
+            if self.next_episode_target():
+                intent=self.play_intent
+                QTimer.singleShot(0,lambda:self.play_next_episode() if self.stack.currentIndex()==2 and self.play_intent==intent else None)
+            else:self.finish_playback('Finished · Your place is saved.')
 
     def apply_resume(self):
         if (self.resume_position and self.stack.currentIndex() == 2 and self.player.isSeekable()
@@ -1514,10 +1543,79 @@ class Window(QMainWindow):
         self.save_progress()
 
     def play_next_episode(self):
-        if self.playing_subject and self.episode.currentIndex() < self.episode.count() - 1:
-            self.save_progress()
-            self.episode.setCurrentIndex(self.episode.currentIndex() + 1)
-            self.watch_current()
+        for picker in (self.quality,self.audio_tracks,self.caption_selector):picker.hidePopup()
+        target=self.next_episode_target()
+        if not target:
+            self.finish_playback('Finished · No more episodes are available.');return
+        self.save_progress();self.next_up_panel.hide()
+        season,episode=target
+        for row in range(self.season.count()):
+            if int((self.season.itemData(row) or {}).get('se') or 0)==season:
+                self.season.setCurrentIndex(row);break
+        row=self.episode.findData(episode)
+        if row<0:self.finish_playback('No playable next episode is available.');return
+        self.episode.setCurrentIndex(row)
+        self.watch_current(continuation=True)
+
+    def next_episode_target(self):
+        if not self.playing_subject or int(self.playing_subject.get('subjectType') or 0)!=2 or not self.playing_key:return None
+        try:
+            _,season,episode=self.playing_key.rsplit(':',2)
+            return following_episode(((self.detail_data or {}).get('resource') or {}).get('seasons') or [],int(season),int(episode))
+        except (ValueError,TypeError):return None
+
+    def finish_playback(self,message='Finished'):
+        self.continuation_starting=False
+        for picker in (self.quality,self.audio_tracks,self.caption_selector):picker.hidePopup()
+        self.save_progress();self.next_up_panel.hide()
+        if self.cinema and self.cinema.isVisible():self.cinema.leave()
+        self.player.stop();self.prepared_media=None
+        self.stack.setCurrentIndex(self.playback_return_view if self.playback_return_view in (0,1,3) else (1 if self.current else 0))
+        self.detail_notice.setText(message);self.status.setText(message)
+        self.watch.setEnabled(bool(self.current));self.next_episode.setEnabled(False)
+
+    def playback_error(self,error,text):
+        if self.continuation_starting:
+            self.finish_playback('The next episode could not start. '+text)
+        else:self.show_error('Playback error: '+text)
+
+    def dismiss_next_up(self):
+        self.next_up_dismissed_key=self.playing_key;self.next_up_panel.hide()
+
+    def position_next_up(self):
+        if not hasattr(self,'next_up_panel') or not self.next_up_panel.isVisible():return
+        origin=self.video.mapToGlobal(QPoint(0,0))
+        self.next_up_panel.adjustSize()
+        self.next_up_panel.move(origin.x()+max(10,self.video.width()-self.next_up_panel.width()-24),origin.y()+max(12,self.video.height()-self.next_up_panel.height()-125))
+
+    def update_next_up(self,position):
+        target=self.next_episode_target()
+        threshold=next_up_at(self.player.duration(),self.current_stream)
+        show=self.stack.currentIndex()==2 and target and threshold is not None and position>=threshold and self.next_up_dismissed_key!=self.playing_key
+        if not show:self.next_up_panel.hide();return
+        marker=(self.playing_key,target)
+        if getattr(self,'next_prefetch_marker',None)!=marker:
+            self.next_prefetch_marker=marker
+            self._stream_future(self.selected_playback_subject().copy(),target[0],target[1])
+        self.next_up_label.setText(f'Up next · Season {target[0]}, Episode {target[1]}')
+        if not self.next_up_panel.isVisible():
+            self.next_up_panel.show();self.next_up_panel.raise_()
+        self.position_next_up()
+
+    def video_click(self):
+        if self.suppress_video_release:
+            self.suppress_video_release=False;return
+        self.video_click_state=self.player.playbackState()
+        self.video_click_source=self.player.source()
+        self.video_click_time=time.monotonic()
+        self.toggle_pause()
+
+    def video_double_click(self):
+        if time.monotonic()-self.video_click_time<(QApplication.doubleClickInterval()+100)/1000 and getattr(self,'video_click_source',None)==self.player.source():
+            self.player.play() if self.video_click_state==QMediaPlayer.PlayingState else self.player.pause()
+        self.video_click_time=0;self.suppress_video_release=True
+        QTimer.singleShot(QApplication.doubleClickInterval()+50,lambda:setattr(self,'suppress_video_release',False))
+        self.toggle_fullscreen()
 
     def change_quality(self, index):
         if index < 0 or self.stack.currentIndex() != 2:
@@ -1544,6 +1642,7 @@ class Window(QMainWindow):
                 self.player.pause()
 
     def position_changed(self, position):
+        self.update_next_up(position)
         if (position > 0 and self.stack.currentIndex() == 2 and self.playing_subject
                 and self.playing_key and not self.resume_position and not getattr(self, 'prebuffering', False)):
             self.last_progress_checkpoint = (self.playing_key, position, self.player.duration())
@@ -1720,6 +1819,7 @@ class Window(QMainWindow):
             self.stack.setCurrentIndex(0)
 
     def leave_player(self):
+        self.next_up_panel.hide()
         if (self.cinema and self.cinema.isVisible()) or self.isFullScreen():
             self.toggle_fullscreen()
         self.save_progress()
@@ -1731,6 +1831,7 @@ class Window(QMainWindow):
         self.status.setText('Ready to resume')
 
     def stop_for_navigation(self):
+        if hasattr(self,'next_up_panel'):self.next_up_panel.hide()
         self.capture_catalogue_view()
         if hasattr(self,'history_toolbar'):
             self.finish_history_selection()
@@ -1857,6 +1958,7 @@ class Window(QMainWindow):
             history_key = self.playing_subject['_audio_base_id'] + ':' + ':'.join(self.playing_key.rsplit(':', 2)[1:])
             history_subject = {**self.playing_subject, 'subjectId': self.playing_subject['_audio_base_id']}
         self.state['history'][history_key] = {'subject': history_subject,
+            'completed': bool(self.end_handled),
             'position': position, 'duration': duration or int(float((self.current_stream or {}).get('duration') or 0) * 1000), 'updated': time.time(),
             'audio_subject_id': str(self.playing_subject['subjectId'])}
         self.persist()
@@ -1873,6 +1975,7 @@ class Window(QMainWindow):
     def open_local(self):
         path, _ = QFileDialog.getOpenFileName(self, 'Open a video', '', 'Video files (*.mp4 *.mkv *.webm *.mov *.avi);;All files (*)')
         if path:
+            self.playback_return_view = 0
             self.save_progress()
             self.playing_subject, self.playing_key = None, ''
             self.current_stream = None
@@ -1940,6 +2043,7 @@ class Window(QMainWindow):
     def open_download(self, item):
         path = item.data(Qt.UserRole)
         if path and Path(path).is_file():
+            self.playback_return_view = 3
             self.playing_subject, self.playing_key, self.current_stream = None, '', None
             self.preview_limit = 0
             self.clear_captions()
@@ -1948,6 +2052,8 @@ class Window(QMainWindow):
             self.start_video(QUrl.fromLocalFile(path).toString())
 
     def closeEvent(self, event):
+        self.closing=True;self.request_generation+=1;self.play_intent+=1
+        self.next_up_panel.hide()
         self.capture_catalogue_view()
         self.catalogue_cache.flush()
         self.update_timer.stop()
@@ -1986,11 +2092,13 @@ class Window(QMainWindow):
             compact = self.width() < 1180
             self.detail_cover.setFixedSize(210, 315) if compact else self.detail_cover.setFixedSize(255, 382)
             self.detail_title.setStyleSheet('font-size:28px' if compact else 'font-size:33px')
+            self.position_next_up()
 
     def moveEvent(self, event):
         super().moveEvent(event)
         if hasattr(self, 'video'):
             self.video.position_caption()
+            self.position_next_up()
 
 
 
