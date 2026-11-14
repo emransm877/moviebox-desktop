@@ -211,7 +211,7 @@ class NavButton(QPushButton):
             painter.drawRoundedRect(QRectF(0, self.height() / 2 - 10, 3, 20), 1.5, 1.5)
 
 
-def action(text, callback=None, glyph=None, *, primary=False, quiet=False):
+def action(text, callback=None, glyph=None, *, primary=False, quiet=False, icon_only=False):
     widget = QPushButton(text)
     widget.setCursor(Qt.PointingHandCursor)
     if glyph:
@@ -223,6 +223,13 @@ def action(text, callback=None, glyph=None, *, primary=False, quiet=False):
         widget.setObjectName('primary')
     elif quiet:
         widget.setObjectName('quiet')
+    if icon_only:
+        widget.setToolTip(text)
+        widget.setAccessibleName(text)
+        widget.setText('')
+        widget.setFixedSize(42,40)
+        widget.setIconSize(QSize(22,22))
+        widget.setStyleSheet('padding:8px')
     if callback:
         widget.clicked.connect(callback)
     return widget
@@ -957,7 +964,7 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     w.progress.seekRequested.connect(w.seek_to)
     control_layout.addWidget(w.progress)
     transport = QHBoxLayout()
-    w.pause = action('Pause', w.toggle_pause, 'pause')
+    w.pause = action('Pause', w.toggle_pause, 'pause',icon_only=True)
     transport.addWidget(w.pause)
     transport.addWidget(action('−10s', lambda: w.seek_to(max(0, w.player.position() - 10000)), quiet=True))
     transport.addWidget(action('+10s', lambda: w.seek_to(w.player.position() + 10000), quiet=True))
@@ -965,7 +972,7 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     w.clock.setObjectName('muted')
     transport.addWidget(w.clock)
     transport.addStretch()
-    w.episode_browser_button = action('Seasons & episodes',w.open_player_episodes,'series',quiet=True)
+    w.episode_browser_button = action('Seasons & episodes',w.open_player_episodes,'series',quiet=True,icon_only=True)
     w.episode_browser_button.hide()
     transport.addWidget(w.episode_browser_button)
     w.download_button = action('Download', w.download_current, 'download', quiet=True)

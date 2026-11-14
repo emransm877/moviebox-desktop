@@ -35,7 +35,8 @@ def wait(predicate,seconds=10):
     while not predicate() and time.monotonic()<deadline:QTest.qWait(40)
     assert predicate(),(w.status.text(),w.playing_key,w.stack.currentIndex())
 try:
-    detail(series);w.watch_current();wait(lambda:w.frames>5 and w.player.isPlaying())
+    detail(series);w.season.setCurrentIndex(0);w.episode.setCurrentIndex(0)
+    w.watch_current();wait(lambda:w.frames>5 and w.player.isPlaying())
     QTest.mouseClick(w.video,Qt.LeftButton,pos=w.video.rect().center());assert w.player.playbackState()==QMediaPlayer.PausedState
     QTest.mouseClick(w.video,Qt.LeftButton,pos=w.video.rect().center());assert w.player.isPlaying()
     checks['single_video_click_pauses_and_resumes_immediately']=True

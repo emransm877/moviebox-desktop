@@ -35,7 +35,7 @@ from artwork import resized_artwork
 from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
 from series_policy import next_episode as following_episode, next_up_at, episode_numbers
 
-APP_VERSION = '0.9.1'
+APP_VERSION = '0.9.2'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -679,7 +679,10 @@ class Window(QMainWindow):
     def play_state_changed(self, state):
         from fluent_ui import icon
         playing = state == QMediaPlayer.PlayingState
-        self.pause.setText('Pause' if playing else 'Play')
+        self.pause.setText('')
+        self.pause.setToolTip('Pause' if playing else 'Play')
+        self.pause.setAccessibleName('Pause' if playing else 'Play')
+        self.pause.setProperty('fluentGlyph','pause' if playing else 'play')
         self.pause.setIcon(icon('pause' if playing else 'play'))
         if playing and self.resume_position:
             QTimer.singleShot(200, self.apply_resume)
