@@ -309,7 +309,7 @@ class InputRouter(QObject):
             return False
         key = event.key()
         focus = QApplication.focusWidget()
-        if key==Qt.Key_Up and w.stack.currentIndex()==2 and not w.player_episode_panel.isVisible() and not QApplication.activePopupWidget() and not isinstance(focus,(QComboBox,QLineEdit,QAbstractSpinBox)) and not w.episode_browser_button.isHidden():
+        if key==Qt.Key_Up and cinema and not stage.controls_visible and w.stack.currentIndex()==2 and not w.player_episode_panel.isVisible() and not QApplication.activePopupWidget() and not isinstance(focus,(QComboBox,QLineEdit,QAbstractSpinBox)) and not w.episode_browser_button.isHidden():
             if not event.isAutoRepeat():w.open_player_episodes()
             return True
         if key == Qt.Key_F11:

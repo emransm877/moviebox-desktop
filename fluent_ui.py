@@ -167,6 +167,8 @@ def stylesheet(selection=True):
     QMenu{background:SURFACE;color:TEXT;border:1px solid LINE;padding:5px}
     QMenu::item{padding:8px 26px;border-radius:6px}
     QMenu::item:selected{background:SELECT}
+    QMenu#playerOptionsMenu::item{padding:8px 14px}
+    QMenu#playerOptionsMenu::separator{height:1px;margin:4px 8px}
     QFrame#detailCard,QFrame#controlBar,QFrame#playerEpisodePanel{background:SURFACE;border:1px solid LINE;border-radius:16px}
     QListWidget#playerEpisodes::item{padding:10px;margin:3px}
     QListWidget#playerEpisodes::item:selected{background:SELECT;color:TEXT}
@@ -1013,16 +1015,20 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     transport.addWidget(w.fullscreen_button)
     w.subtitle_tools=action('More player options',None,'player-more-horizontal',quiet=True,icon_only=True)
     w.subtitle_tools_menu=QMenu(w)
+    w.subtitle_tools_menu.setObjectName('playerOptionsMenu')
     w.download_button=action('Download',w.download_current,'download',quiet=True)
     w.download_button.setParent(controls);w.download_button.hide()
-    w.player_download_action=w.subtitle_tools_menu.addAction('Download this video',w.download_current)
+    w.player_download_action=w.subtitle_tools_menu.addAction('Download video',w.download_current)
     w.subtitle_tools_menu.aboutToShow.connect(lambda:w.player_download_action.setEnabled(w.download_button.isEnabled()))
     w.subtitle_tools_menu.addSeparator()
-    w.subtitle_tools_menu.addAction('Import an SRT or WebVTT file…',w.open_subtitles)
-    timing=QWidget();timing_layout=QHBoxLayout(timing);timing_layout.setContentsMargins(14,10,14,10)
+    w.subtitle_tools_menu.addAction('Import subtitles…',w.open_subtitles)
+    timing=QWidget();timing_layout=QHBoxLayout(timing);timing_layout.setContentsMargins(14,8,14,8);timing_layout.setSpacing(12)
     timing_layout.addWidget(QLabel('Subtitle timing'))
     w.subtitle_delay=QSpinBox();w.subtitle_delay.setRange(-10000,10000);w.subtitle_delay.setSingleStep(100)
     w.subtitle_delay.setSuffix(' ms');w.subtitle_delay.setToolTip('Subtitle timing · Positive values display later');w.subtitle_delay.setFixedWidth(110)
+    w.subtitle_delay.setFixedHeight(36)
+    w.subtitle_delay.lineEdit().setTextMargins(10,0,6,0)
+    w.subtitle_delay.lineEdit().setAlignment(Qt.AlignLeft|Qt.AlignVCenter)
     timing_layout.addWidget(w.subtitle_delay)
     timing_action=QWidgetAction(w.subtitle_tools_menu);timing_action.setDefaultWidget(timing);w.subtitle_tools_menu.addAction(timing_action)
     def show_more():
@@ -1059,9 +1065,10 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     drawer_header.addWidget(action('Close',w.close_player_episodes))
     drawer.addLayout(drawer_header)
     w.player_season_picker=FluentComboBox()
+    w.player_season_picker.setFixedWidth(144)
     w.player_season_picker.setAccessibleName('Player season')
     w.player_season_picker.currentIndexChanged.connect(w.populate_player_episodes)
-    drawer.addWidget(w.player_season_picker)
+    drawer.addWidget(w.player_season_picker,0,Qt.AlignLeft)
     w.player_episode_list=QListWidget()
     w.player_episode_list.setObjectName('playerEpisodes')
     w.player_episode_list.setAccessibleName('Player episodes')

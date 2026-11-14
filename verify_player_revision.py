@@ -55,6 +55,7 @@ try:
     checks['all_player_actions_share_one_row_below_timeline']=True
     w.episode_browser_button.click();QTest.qWait(180)
     assert w.player_episode_panel.isVisible() and w.player.isPlaying()
+    assert w.player_season_picker.width()<=180
     w.player_season_picker.setCurrentIndex(1)
     assert w.player.isPlaying() and w.playing_key.endswith(':1:1')
     assert w.player_episode_list.item(0).data(Qt.UserRole)==(2,1)
@@ -62,8 +63,14 @@ try:
     QTest.keyClick(w.player_season_picker,Qt.Key_Escape)
     assert not w.player_episode_panel.isVisible() and w.player.isPlaying()
     checks['in_player_seasons_browse_and_escape_without_pausing']=True
-    w.toggle_fullscreen();QTest.qWait(250);w.cinema.reveal_controls();w.subtitle_tools.click();QTest.qWait(100)
+    w.toggle_fullscreen();QTest.qWait(250);w.cinema.reveal_controls();w.pause.setFocus()
+    QTest.keyClick(w.pause,Qt.Key_Up)
+    assert not w.player_episode_panel.isVisible() and w.player.isPlaying()
+    checks['up_navigates_visible_controls_without_opening_episode_panel']=True
+    w.subtitle_tools.click();QTest.qWait(100)
     assert w.subtitle_tools_menu.isVisible() and w.subtitle_delay.isVisible() and w.player.isPlaying(),(w.subtitle_tools_menu.isVisible(),w.subtitle_delay.isVisible(),w.player.playbackState())
+    assert w.subtitle_delay.lineEdit().textMargins().left()>=10 and w.subtitle_tools_menu.width()<=320
+    w.subtitle_tools_menu.grab().save(str(OUT/'player-more.png'))
     QTest.keyClick(w.subtitle_tools_menu,Qt.Key_Escape)
     assert w.cinema.isVisible() and w.player.isPlaying()
     checks['fullscreen_more_retains_download_and_subtitle_timing_without_pausing']=True

@@ -35,7 +35,7 @@ from artwork import resized_artwork
 from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
 from series_policy import next_episode as following_episode, next_up_at, episode_numbers
 
-APP_VERSION = '0.10.0'
+APP_VERSION = '0.10.1'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -1614,6 +1614,7 @@ class Window(QMainWindow):
             if int(record.get('se') or 0)>0:self.player_season_picker.addItem('Season '+str(record['se']),record)
         for row in range(self.player_season_picker.count()):
             if int(self.player_season_picker.itemData(row).get('se') or 0)==int(season):self.player_season_picker.setCurrentIndex(row);break
+        self.player_season_picker.setFixedWidth(max(128,min(180,max((self.player_season_picker.fontMetrics().horizontalAdvance(self.player_season_picker.itemText(i)) for i in range(self.player_season_picker.count())),default=0)+56)))
         self.player_season_picker.blockSignals(False);self.populate_player_episodes()
         self.next_up_panel.hide();self.player_episode_panel.show();self.position_player_episodes();self.player_episode_panel.raise_()
         self.player_episode_panel.activateWindow();self.player_season_picker.setFocus()

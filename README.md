@@ -1,6 +1,6 @@
 # MovieBox Desktop App
 
-Independent Windows client · Preview 0.10.0 · Installed app name: **MovieBox**
+Independent Windows client · Preview 0.10.1 · Installed app name: **MovieBox**
 
 A local Windows reconstruction with a native Qt interface and native video player.
 Runs without Android, an emulator, or an embedded MovieBox website.
@@ -9,14 +9,14 @@ Launch `MovieBox.exe` from its folder. Keep the `_internal` directory beside it.
 
 ## Download and install
 
-[**Download Windows setup EXE**](https://github.com/emransm877/moviebox-desktop/releases/latest/download/MovieBox-Setup-0.10.0-windows-x64.exe)
+[**Download Windows setup EXE**](https://github.com/emransm877/moviebox-desktop/releases/latest/download/MovieBox-Setup-0.10.1-windows-x64.exe)
 
 Run the setup EXE to install the complete application, Start menu shortcut and
 optional Desktop shortcut. Python and administrator access are not required.
 Uninstall through Windows Settings; your library/history remain in your user data
 directory. The installed application and shortcuts are named **MovieBox**.
 
-A [portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.0)
+A [portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.1)
 is also available. Extract it completely and launch `MovieBox/MovieBox.exe`;
 keep `_internal` beside that executable.
 
