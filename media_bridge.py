@@ -5,11 +5,22 @@ Preserves the service's own signed media headers and HTTP byte ranges.
 """
 from __future__ import annotations
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from socketserver import TCPServer
 import secrets
 import threading
+import socket
 import time
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+
+
+class LoopbackHTTPServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer otherwise performs reverse DNS synchronously at startup.
+        # This server is always numeric loopback and needs no hostname lookup.
+        TCPServer.server_bind(self)
+        self.server_name = 'localhost'
+        self.server_port = self.server_address[1]
 
 
 class MediaBridge:
@@ -17,11 +28,21 @@ class MediaBridge:
         self.token = secrets.token_urlsafe(24)
         self.sources = {}
         self.lock = threading.Lock()
+        self.clients = set()
         self.bytes_received, self.read_seconds, self.http_error = 0, 0, 0
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
+
+            def setup(self):
+                super().setup()
+                with owner.lock: owner.clients.add(self.connection)
+
+            def finish(self):
+                try: super().finish()
+                finally:
+                    with owner.lock: owner.clients.discard(self.connection)
 
             def log_message(self, *args):
                 pass
@@ -69,7 +90,7 @@ class MediaBridge:
                     self.close_connection = True
                 self.close_connection = True
 
-        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        self.server = LoopbackHTTPServer(('127.0.0.1', 0), Handler)
         self.server.daemon_threads = True
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True, name='moviebox-media')
         self.thread.start()
@@ -88,6 +109,20 @@ class MediaBridge:
         with self.lock:
             return self.bytes_received * 8 / max(.05, self.read_seconds) / 1_000_000
 
+    def cancel_active(self):
+        """End downstream reads before Qt synchronously joins its media workers.
+
+        Closing an upstream response may itself wait for its pending read. Shut
+        down the loopback client socket directly so player.stop never depends
+        on the upstream network timeout or another Python handler acquiring GIL.
+        """
+        with self.lock:
+            clients = list(self.clients)
+        for client in clients:
+            try: client.shutdown(socket.SHUT_RDWR)
+            except OSError: pass
+
     def close(self):
+        self.cancel_active()
         self.server.shutdown()
         self.server.server_close()

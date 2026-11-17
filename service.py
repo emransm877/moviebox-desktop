@@ -7,6 +7,7 @@ import hashlib
 import json
 import threading
 import time
+from artwork_layout import prepare_artwork
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
@@ -26,6 +27,7 @@ class MovieBoxService:
         self.player_referer = ''
         self.last_play_info = {}
         self.lock = threading.Lock()
+        self.banner_index = {}
         self.native = None
         if use_native:
             from native_mobile import NativeMovieBox
@@ -60,7 +62,8 @@ class MovieBoxService:
             data = json.load(response)
         if data.get('code') != 0:
             raise ServiceError(data.get('message') or 'MovieBox could not complete this request.')
-        return data.get('data')
+        with self.lock:
+            return prepare_artwork(data.get('data'), self.banner_index)
 
     def home(self):
         return self.request('/home?' + urlencode({'host': 'movieboxhd.net'}))

@@ -32,10 +32,11 @@ from audio_options import audio_variants, language_label, with_audio, matching_r
 from library_store import LibraryStore
 import release_updates
 from artwork import resized_artwork
+from artwork_layout import fit_rect
 from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
 from series_policy import next_episode as following_episode, next_up_at, episode_numbers
 
-APP_VERSION = '0.10.3'
+APP_VERSION = '0.10.4'
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -308,10 +309,8 @@ class PosterDelegate(QStyledItemDelegate):
             painter.save()
             painter.setClipPath(clip)
             painter.setRenderHint(QPainter.SmoothPixmapTransform)
-            scale = max(cover.width() / image.width(), cover.height() / image.height())
-            width, height = cover.width() / scale, cover.height() / scale
-            source = QRectF((image.width() - width) / 2, (image.height() - height) / 2, width, height)
-            painter.drawPixmap(cover, image, source)
+            target = QRectF(*fit_rect(image.width(), image.height(), cover.x(), cover.y(), cover.width(), cover.height()))
+            painter.drawPixmap(target, image, QRectF(image.rect()))
             painter.restore()
         painter.setPen(QColor('#f1f5fb' if dark else '#182431'))
         painter.setFont(QFont('Segoe UI Variable Text', 10, QFont.DemiBold))
@@ -634,7 +633,7 @@ class Window(QMainWindow):
 
     def build_ui(self):
         from fluent_ui import build_ui
-        build_ui(self, CatalogModel, PosterDelegate, VideoSurface, Artwork.fetch)
+        build_ui(self, CatalogModel, PosterDelegate, VideoSurface, lambda url: Artwork.fetch(url, 1280))
 
     def build_player(self):
         self.player = QMediaPlayer(self)
@@ -712,7 +711,7 @@ class Window(QMainWindow):
         self.apply_resume()
         expected = int((self.current_stream or {}).get('duration') or 0)
         if expected > 120 and 0 < duration < 60000 and duration < expected * 100:
-            self.player.stop()
+            self.stop_media_player()
             self.show_error('MovieBox returned a short placeholder instead of the requested video. Playback stopped.')
 
     def populate_audio_tracks(self):
@@ -1233,7 +1232,7 @@ class Window(QMainWindow):
             return
         self.save_progress()
         self.end_prebuffer()
-        self.player.stop()
+        self.stop_media_player()
         local = self.bridge.register(stream['url'], stream.get('headers'))
         self.prepared_media = {'key': key, 'remote': stream['url'], 'local': local}
         self.current_stream = stream
@@ -1283,7 +1282,7 @@ class Window(QMainWindow):
         if not subject:
             return
         if getattr(self, 'prebuffering', False):
-            self.player.stop()
+            self.stop_media_player()
             self.end_prebuffer()
         if getattr(self, 'hero_auto_play', '') != str(subject['subjectId']):
             self.hero_auto_play = ''
@@ -1508,7 +1507,7 @@ class Window(QMainWindow):
         reuse = bool(prepared and prepared['key'] == self.playing_key and prepared['remote'] == url
                      and self.player.source().toString() == prepared['local'])
         if not reuse:
-            self.player.stop()
+            self.stop_media_player()
         at_saved_position = reuse and abs(prepared.get('position', -100000) - position) < 1500
         self.resume_position = 0 if at_saved_position else position
         self.resume_not_before = time.monotonic() + .15
@@ -1597,7 +1596,7 @@ class Window(QMainWindow):
         for picker in (self.quality,self.audio_tracks,self.caption_selector):picker.hidePopup()
         self.save_progress();self.next_up_panel.hide()
         if self.cinema and self.cinema.isVisible():self.cinema.leave()
-        self.player.stop();self.prepared_media=None
+        self.stop_media_player();self.prepared_media=None
         self.stack.setCurrentIndex(self.playback_return_view if self.playback_return_view in (0,1,3) else (1 if self.current else 0))
         self.detail_notice.setText(message);self.status.setText(message)
         self.watch.setEnabled(bool(self.current))
@@ -1723,9 +1722,11 @@ class Window(QMainWindow):
                 self.show_error('That quality is a different cut. Keeping the current video and your place.')
                 return
             was_playing = self.player.isPlaying()
+            position = self.player.position()
             self.current_stream = stream
-            self.start_video(stream['url'], self.player.position())
-            if not was_playing:
+            self.start_video(stream['url'], position)
+            self.resume_paused = not was_playing
+            if not was_playing and position <= 0:
                 self.player.pause()
 
     def position_changed(self, position):
@@ -1920,6 +1921,10 @@ class Window(QMainWindow):
         self.stack.setCurrentIndex(1 if self.current else 0)
         self.status.setText('Ready to resume')
 
+    def stop_media_player(self):
+        self.bridge.cancel_active()
+        self.player.stop()
+
     def stop_for_navigation(self):
         if hasattr(self,'volume_menu'):self.volume_menu.hide()
         if hasattr(self,'player_episode_panel'):self.player_episode_panel.hide()
@@ -1933,14 +1938,14 @@ class Window(QMainWindow):
             self.catalogue_filter_panel.hide()
         self.play_intent += 1
         if getattr(self, 'prebuffering', False):
-            self.player.stop()
+            self.stop_media_player()
             self.end_prebuffer()
         if self.cinema and self.cinema.isVisible():
             self.cinema.leave()
         self.hero_auto_play = ''
         if self.stack.currentIndex() == 2:
             self.save_progress()
-            self.player.stop()
+            self.stop_media_player()
         self.request_generation += 1
 
     def toggle_saved(self):
@@ -2155,7 +2160,7 @@ class Window(QMainWindow):
         if self.cinema and self.cinema.isVisible():
             self.cinema.leave()
         self.save_progress()
-        self.player.stop()
+        self.stop_media_player()
         self.pause_downloads()
         self.download_pool.shutdown(wait=False, cancel_futures=True)
         self.download_timer.stop()

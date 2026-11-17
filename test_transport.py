@@ -10,6 +10,8 @@ from downloads import Download
 
 
 DATA = bytes(range(256)) * 2048
+STALLED = threading.Event()
+RELEASE = threading.Event()
 
 
 class Origin(BaseHTTPRequestHandler):
@@ -32,10 +34,39 @@ class Origin(BaseHTTPRequestHandler):
         if partial:
             self.send_header('Content-Range', f'bytes {start}-{end}/{len(DATA)}')
         self.end_headers()
+        if self.path == '/stall.mp4':
+            self.wfile.flush();STALLED.set();RELEASE.wait(5)
+            try:self.wfile.write(DATA[start:end+1])
+            except (OSError,ConnectionError):pass
+            return
         self.wfile.write(DATA[start:end+1])
 
 
 class TransportTests(unittest.TestCase):
+    def test_loopback_startup_never_calls_blocking_reverse_dns(self):
+        from unittest.mock import patch
+        with patch('socket.getfqdn',side_effect=AssertionError('Unexpected reverse DNS on the GUI thread')):
+            bridge=MediaBridge()
+            try:self.assertEqual(bridge.server.server_name,'localhost')
+            finally:bridge.close()
+    def test_cancelling_loopback_unblocks_read_without_waiting_for_origin(self):
+        import time
+        bridge=MediaBridge();STALLED.clear();RELEASE.clear();finished=threading.Event();errors=[]
+        local=bridge.register(self.url.replace('/sample.mp4','/stall.mp4'),{'X-Test-Signature':'test-only'})
+        def read():
+            try:
+                with urlopen(local,timeout=4) as response:response.read()
+            except Exception as error:errors.append(type(error).__name__)
+            finally:finished.set()
+        worker=threading.Thread(target=read,daemon=True);worker.start()
+        try:
+            self.assertTrue(STALLED.wait(2),'Fixture origin did not begin stalled response')
+            started=time.monotonic();bridge.cancel_active()
+            self.assertTrue(finished.wait(.75),'Player-side read waited for the stalled upstream')
+            self.assertLess(time.monotonic()-started,.75);self.assertTrue(errors)
+            fresh=bridge.register(self.url,{'X-Test-Signature':'test-only'})
+            with urlopen(fresh,timeout=2) as response:self.assertEqual(response.read(),DATA)
+        finally:RELEASE.set();worker.join(2);bridge.close()
     @classmethod
     def setUpClass(cls):
         cls.origin = ThreadingHTTPServer(('127.0.0.1', 0), Origin)

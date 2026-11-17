@@ -7,7 +7,7 @@ import threading
 import time
 import uuid
 
-FIELDS=('subjectId','subjectType','title','releaseDate','imdbRatingValue','genre','countryName','hasResource','corner')
+FIELDS=('subjectId','subjectType','title','releaseDate','imdbRatingValue','genre','countryName','hasResource','corner','banner','backdrop','stills')
 def compact(subject):
     result={key:subject[key] for key in FIELDS if key in subject}
     cover=subject.get('cover')

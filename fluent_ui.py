@@ -6,13 +6,14 @@ import sys
 import winreg
 from PySide6.QtCore import Qt, QSize, QRectF, QUrl, QTimer, QBuffer, QByteArray, QIODevice, QPoint
 from PySide6.QtGui import (QColor, QPainter, QPixmap, QFont, QFontMetrics, QIcon, QLinearGradient,
-    QPainterPath, QImageReader, QShortcut, QKeySequence)
+    QPainterPath, QImageReader, QImage, QShortcut, QKeySequence)
 from PySide6.QtWidgets import (QApplication, QWidget, QFrame, QLabel, QPushButton,
     QVBoxLayout, QHBoxLayout, QLineEdit, QComboBox, QListView, QListWidget, QSlider,
     QSpinBox, QCheckBox, QStackedWidget, QSizePolicy, QDialog, QFileDialog, QScrollArea, QMenu, QWidgetAction)
 from PySide6.QtSvg import QSvgRenderer
 from interactions import SeekSlider, FluentComboBox
 from themes import THEMES, palette, initial_theme, theme_key
+from artwork_layout import fit_rect, banner_artwork, banner_source_rect
 
 
 ROOT = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
@@ -412,8 +413,6 @@ class HeroCard(QWidget):
         self.apply_theme()
 
     def set_subject(self, subject):
-        if self.subject and self.subject.get('subjectId') == subject.get('subjectId'):
-            return
         self.subject = subject
         self.image = QPixmap()
         self.update()
@@ -423,7 +422,7 @@ class HeroCard(QWidget):
         self.title.setText(title[:100])
         self.meta.setText('  ·  '.join(str(x) for x in [str(subject.get('releaseDate') or '')[:4],
             subject.get('genre', '').replace(',', ' · '), ('IMDb ' + str(subject['imdbRatingValue'])) if subject.get('imdbRatingValue') else ''] if x))
-        url = (subject.get('stills') or {}).get('url') or ((subject.get('trailer') or {}).get('cover') or {}).get('url') or (subject.get('cover') or {}).get('url')
+        url, self.banner_source = banner_artwork(subject)
         if not url:
             return
         def load():
@@ -432,12 +431,14 @@ class HeroCard(QWidget):
             buffer.open(QIODevice.ReadOnly)
             reader = QImageReader(buffer)
             size = reader.size()
+            if not size.isValid() or size.width()<1280 or size.height()<600 or size.width()/max(1,size.height())<1.45:
+                return QImage()
             if size.isValid():
                 size.scale(QSize(1400, 900), Qt.KeepAspectRatio)
                 reader.setScaledSize(size)
             return reader.read()
         def ready(image):
-            if generation == self.generation and not image.isNull():
+            if generation == self.generation and not image.isNull() and image.width()/max(1,image.height())>=1.45:
                 self.image = QPixmap.fromImage(image)
                 self.update()
         self.window.submit(load, ready, message='', failure=lambda message: None)
@@ -468,17 +469,14 @@ class HeroCard(QWidget):
         p = palette(QApplication.instance().property('movieboxTheme'))
         painter.fillRect(self.rect(), QColor(p['hero']))
         if not self.image.isNull():
-            target = self.image.size().scaled(self.size(), Qt.KeepAspectRatioByExpanding)
-            source = QRectF((self.image.width() - self.width() * self.image.width() / target.width()) / 2,
-                            (self.image.height() - self.height() * self.image.height() / target.height()) / 2,
-                            self.width() * self.image.width() / target.width(), self.height() * self.image.height() / target.height())
-            painter.drawPixmap(QRectF(self.rect()), self.image, source)
+            source=QRectF(*banner_source_rect(self.image.width(),self.image.height(),self.width(),self.height()))
+            painter.drawPixmap(QRectF(self.rect()),self.image,source)
         else:
             painter.setOpacity(.18)
             painter.drawPixmap(self.width() - 235, (self.height() - 144) // 2, self.loading_logo)
             painter.setOpacity(1)
         gradient = QLinearGradient(0, 0, self.width(), 0)
-        for stop, alpha in ((0,252),(.45,226),(.78,65),(1,12)):
+        for stop, alpha in ((0,238),(.35,194),(.68,55),(1,8)):
             shade = QColor(p['hero']); shade.setAlpha(alpha)
             gradient.setColorAt(stop, shade)
         painter.fillRect(self.rect(), gradient)

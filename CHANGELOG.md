@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.4 — 2026-11-18
+
+- Use explicit HD promotional banners joined to the exact title ID; stop using trailer frames or posters as panoramic backdrops. Reject late image callbacks from previous slides.
+- Keep poster artwork proportional in browsing and details, and preserve banner metadata in the catalogue cache.
+- Cancel stalled loopback reads before stopping the native player, preventing navigation from waiting for a source timeout.
+- Preserve position and paused state when changing quality.
+
 ## 0.10.3 — 2026-11-14
 
 - Put the six catalogue fields in one content-sized row with readable selected text.

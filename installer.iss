@@ -12,7 +12,7 @@
 [Setup]
 AppId={#SetupIdentity}
 AppName=MovieBox
-AppVersion=0.10.3
+AppVersion=0.10.4
 AppPublisher=Emran Hossain
 AppPublisherURL=https://github.com/emransm877/moviebox-desktop
 AppSupportURL=https://github.com/emransm877/moviebox-desktop/issues
@@ -25,7 +25,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 OutputDir={#ReleaseDir}
-OutputBaseFilename=MovieBox-Setup-0.10.3-windows-x64
+OutputBaseFilename=MovieBox-Setup-0.10.4-windows-x64
 SetupIconFile=assets\app.ico
 UninstallDisplayIcon={app}\MovieBox.exe
 Compression=lzma2
