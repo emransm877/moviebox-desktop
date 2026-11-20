@@ -5,7 +5,7 @@
 [![Windows checks](https://github.com/emransm877/moviebox-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/emransm877/moviebox-desktop/actions/workflows/ci.yml)
 [![Published release](https://img.shields.io/github/v/release/emransm877/moviebox-desktop)](https://github.com/emransm877/moviebox-desktop/releases/latest)
 
-[Project website & download insights](https://emransm877.github.io/moviebox-desktop/) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Report a bug](https://github.com/emransm877/moviebox-desktop/issues/new/choose)
+[Project website & download insights](https://emransm877.github.io/moviebox-projects/) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Report a bug](https://github.com/emransm877/moviebox-desktop/issues/new/choose)
 
 An independent preview built with Python and native Qt video playback. It runs
 without Android, an emulator or an embedded MovieBox website. The installed app
@@ -91,7 +91,7 @@ all devices, live sources or network conditions.
 
 ## Website, analytics and contributing
 
-The [project website](https://emransm877.github.io/moviebox-desktop/) introduces
+The [project website](https://emransm877.github.io/moviebox-projects/) introduces
 both Windows and Android projects and combines their download counters. It
 separates application packages from checksum files and counts from unique users.
 Daily growth starts with recorded observations; earlier daily history cannot be

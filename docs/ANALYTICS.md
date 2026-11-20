@@ -1,5 +1,14 @@
 # Download analytics and project website
 
+**Moved:** the active website, live refresh, SEO pages and collection pipeline are
+now maintained in [MovieBox Projects](https://github.com/emransm877/moviebox-projects).
+Use **https://emransm877.github.io/moviebox-projects/** for the shared Android,
+Windows and Samsung TV hub. The former Desktop site is a compatibility redirect.
+The implementation notes below describe the original two-project snapshot site
+and are retained as historical context, not the current live-refresh contract.
+See the hub README for current setup and data definitions. Search Console
+verification must use the new URL-prefix property.
+
 The static website lives in `site/` and is served through GitHub Pages. It combines
 the public release counters of `emransm877/moviebox-android` and
 `emransm877/moviebox-desktop`. No application telemetry, visitor analytics,
