@@ -15,7 +15,13 @@ if (-not $VerifyOnly) {
     $certificate = Get-Item -LiteralPath "Cert:\CurrentUser\My\$CertificateThumbprint" -ErrorAction Stop
     if (-not $certificate.HasPrivateKey -or $certificate.NotAfter -le (Get-Date) -or $certificate.NotBefore -gt (Get-Date)) { throw 'The certificate must be current and have an accessible private key.' }
     if ($certificate.Subject -eq $certificate.Issuer) { throw 'Self-signed certificates are not accepted for public MovieBox releases.' }
-    if ('1.3.6.1.5.5.7.3.3' -notin @($certificate.EnhancedKeyUsageList | ForEach-Object {$_.ObjectId.Value})) { throw 'Certificate is not enabled for code signing.' }
+    $ekuExtension = $certificate.Extensions | Where-Object {$_.Oid.Value -eq '2.5.29.37'} | Select-Object -First 1
+    $ekuOids = @()
+    if ($ekuExtension) {
+        $decoded = [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]::new($ekuExtension, $ekuExtension.Critical)
+        $ekuOids = @($decoded.EnhancedKeyUsages | ForEach-Object {$_.Value})
+    }
+    if ('1.3.6.1.5.5.7.3.3' -notin $ekuOids) { throw 'Certificate is not enabled for code signing.' }
     $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
     $chain.ChainPolicy.RevocationMode = 'Online'
     try { if (-not $chain.Build($certificate)) { throw 'Certificate chain or revocation validation failed.' } } finally { $chain.Dispose() }
@@ -29,6 +35,7 @@ if (-not $VerifyOnly) {
         }
     }
     if (-not $SignTool -or -not (Test-Path -LiteralPath $SignTool)) { throw 'Install the Microsoft Windows SDK Signing Tools, or pass -SignTool.' }
+    if ((Get-AuthenticodeSignature -LiteralPath $SignTool).Status -ne 'Valid') { throw 'Microsoft signing-tool signature could not be verified.' }
     foreach ($path in $paths) {
         & $SignTool sign /sha1 $CertificateThumbprint /s My /fd SHA256 /tr https://timestamp.digicert.com /td SHA256 $path
         if ($LASTEXITCODE -ne 0) { throw "Signing failed: $path" }
