@@ -7,6 +7,8 @@
 
 [Project website & download insights](https://emransm877.github.io/moviebox-projects/) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Report a bug](https://github.com/emransm877/moviebox-desktop/issues/new/choose)
 
+[Code signing policy](docs/CODE_SIGNING.md) · [Privacy and network behavior](docs/PRIVACY.md)
+
 An independent preview built with Python and native Qt video playback. It runs
 without Android, an emulator or an embedded MovieBox website. The installed app
 and shortcuts are named **MovieBox**.

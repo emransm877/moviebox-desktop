@@ -14,6 +14,7 @@ Draft for the maintainer to review and submit. **Not submitted or approved.**
 - Release controls: maintainer review, no automatic public release, exact signed
   artifacts verified before publication, new versions rather than silent replacement.
 - Policy: [Code signing policy](CODE_SIGNING.md).
+- Privacy/network disclosure: [Privacy and network behavior](PRIVACY.md).
 - Third-party rights: project source licensing does not grant rights to upstream
   MovieBox trademarks, artwork, content or proprietary applications. No upstream
   Android APK or modified proprietary binary is included in this signing request.
