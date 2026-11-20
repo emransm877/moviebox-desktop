@@ -1,111 +1,109 @@
 # MovieBox Desktop App
 
-Independent Windows client · Preview 0.10.4 · Installed app name: **MovieBox**
+**A native Windows client for browsing, playback, subtitles and your saved library.**
 
-A local Windows reconstruction with a native Qt interface and native video player.
-Runs without Android, an emulator, or an embedded MovieBox website.
+[![Windows checks](https://github.com/emransm877/moviebox-desktop/actions/workflows/ci.yml/badge.svg)](https://github.com/emransm877/moviebox-desktop/actions/workflows/ci.yml)
+[![Published release](https://img.shields.io/github/v/release/emransm877/moviebox-desktop)](https://github.com/emransm877/moviebox-desktop/releases/latest)
 
-Launch `MovieBox.exe` from its folder. Keep the `_internal` directory beside it.
+[Project website & download insights](https://emransm877.github.io/moviebox-desktop/) · [Troubleshooting](docs/TROUBLESHOOTING.md) · [Report a bug](https://github.com/emransm877/moviebox-desktop/issues/new/choose)
 
-## Download and install
+An independent preview built with Python and native Qt video playback. It runs
+without Android, an emulator or an embedded MovieBox website. The installed app
+and shortcuts are named **MovieBox**.
 
-[**Download Windows setup EXE**](https://github.com/emransm877/moviebox-desktop/releases/latest/download/MovieBox-Setup-0.10.4-windows-x64.exe)
+![Actual Windows application browsing screen](docs/images/desktop-home-v0.10.3.png)
 
-Run the setup EXE to install the complete application, Start menu shortcut and
-optional Desktop shortcut. Python and administrator access are not required.
-Uninstall through Windows Settings; your library/history remain in your user data
-directory. The installed application and shortcuts are named **MovieBox**.
+*Actual application capture from the 0.10.3 packaged build. Catalogue content and
+artwork depend on the upstream service; they are not project-owned assets.*
 
-A [portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.4)
-is also available. Extract it completely and launch `MovieBox/MovieBox.exe`;
-keep `_internal` beside that executable.
+## Download the published application
 
-The installer requires Windows 10 version 1809 or later on an x64-compatible
-system. Native playback was exercised on Windows 11 x64; Windows 10 and ARM
-emulation are not separately certified. This is not a macOS, Linux or 32-bit
-Windows package. The preview is not Authenticode-signed; SHA-256 files accompany
-the downloads. Media availability still depends on the upstream service.
+| Choose a download | Published version | How to use it |
+| --- | --- | --- |
+| [Windows setup EXE](https://github.com/emransm877/moviebox-desktop/releases/download/v0.10.3/MovieBox-Setup-0.10.3-windows-x64.exe) | 0.10.3 | Recommended: run the installer; Python and administrator access are not required. |
+| [Portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/download/v0.10.3/MovieBox-Desktop-0.10.3-windows-x64.zip) | 0.10.3 | Extract everything and open `MovieBox/MovieBox.exe`. Keep `_internal` beside the EXE. |
 
-## Included
+**Published downloads: 0.10.3. Development source: 0.10.4, not yet released.**
+Source-branch fixes are not automatically present in an older downloaded installer.
+See [release notes and SHA-256 files](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.3).
 
-- Live catalog, categories, database search suggestions, movie details and season/episode buttons for series.
-- Separate full Movies and TV Shows catalogues with live server pagination;
-  combine genre, year, country, language/edition, sorting and minimum-rating filters.
-- Prepared playback on title pages, click-to-seek and keyboard navigation.
-- Native video playback, borderless fullscreen (F11 or double-click), mouse-revealed controls, volume and available audio tracks.
-- Auto quality and manual selection among streams the service makes available.
-- A visible audio-language selector for embedded tracks and dubbed editions,
-  preserving position and paused state when switching between matching cuts.
-- Automatic online subtitles, a persistent per-episode subtitle cache, local SRT/WebVTT files, and subtitle timing adjustment.
-- My list, per-episode playback resume, next episode and optional autoplay.
-- Atomic library saves, a recovery copy and merging across app instances protect
-  My list and progress from being overwritten by an idle second window.
-- Optional GitHub update notices with Download, Later, Skip this version and an
-  opt-out in Settings; no automatic installation or compulsory updates.
-- Background downloads, pause, and partial-file resume when downloading the same selection again.
-- Local file playback and disk artwork caching.
-- Optional native QR login, confirmed in the MovieBox app on your phone. Desktop sessions are protected with Windows DPAPI.
-- Original MovieBox branding, a Fluent-inspired Windows shell, native rounded window chrome and Snap support, dark/light/system appearance, and a compact layout.
+## Compatibility and installation
 
-## Current scope
+- Windows 10 version 1809 or newer on x64-compatible systems. Native playback has
+  been exercised on Windows 11 x64; Windows 10 and ARM emulation are not separately certified.
+- This repository's downloads are not macOS, Linux or 32-bit Windows applications.
+- The Windows preview is not Authenticode signed. Compare the download's SHA-256
+  with its release checksum; do not disable device security protections.
+- The app contacts the upstream service for catalogue and playback. A working
+  connection and a playable source are required; availability varies by title.
 
-MovieBox streaming is verified on a full-length episode using its 1080 quality tier,
-including native decoding, seeking, online subtitle discovery and local resume.
-Widescreen source files may have cropped black bars; the provider's 1080 tier does
-not necessarily encode 1080 vertical picture pixels. Available quality varies by title.
+Optional installer shortcuts appear in Start and on the Desktop. To uninstall,
+use Windows Settings. Your local library is stored separately in
+`%LOCALAPPDATA%\MovieBoxDesktop`; downloads go where you choose.
 
-This is a preview, not a claim of complete Android feature parity. QR ticket creation
-is verified; a user-confirmed account login and Android history sync are not yet verified. Access restrictions and available
-resolutions come from MovieBox. A visible resolution label alone is not proof of
-working playback; the player checks the decoded video and rejects short placeholders.
+## What is included
 
-Your phone's app and data are separate. Local lists and artwork are stored in
-`%LOCALAPPDATA%\MovieBoxDesktop`. Downloads are saved to the location you select.
-No forced app update mechanism is included in this Windows build.
+- Native playback, fullscreen, click-to-seek, keyboard controls and available qualities.
+- Separate Movies/TV Shows catalogues, search suggestions and combined filters.
+- Embedded audio tracks and available dubbed editions; switches preserve progress
+  and paused state only between compatible cuts.
+- Automatic subtitle discovery/cache, local SRT/WebVTT import and timing adjustment.
+- My list, per-episode resume, next-episode playback and background downloads.
+- Five persistent themes, light/dark/system appearance and themed branding.
+- Cached catalogue pages, bulk Continue watching removal and undo.
+- Optional GitHub update reminders with Later, Skip and an opt-out. Updates are not forced or automatically installed.
 
-## Source and verification
+Local library saves use atomic snapshots, recovery copies and merging between app
+instances. These safeguards reduce data-loss risks; keep a backup before troubleshooting.
 
-With Python 3.12 installed, run from the repository directory:
+## Known limits
+
+This is an independent preview, not complete Android feature parity. Upstream
+access restrictions remain in place. Not every title offers every subtitle,
+language or quality. A provider's 1080 label does not guarantee 1080 vertical
+picture pixels in widescreen sources.
+
+Native QR ticket creation is verified; user-confirmed account login and Android
+history sync are not yet verified. Sessions are protected with Windows DPAPI.
+Your phone's app data and this local Windows library are separate.
+
+For freezes, missing progress, installation trouble or playback errors, start with
+[troubleshooting](docs/TROUBLESHOOTING.md). Report the exact downloaded release,
+Windows version and installer/ZIP; do not attach account data or signed stream URLs.
+
+## Run or build from source
+
+Use Python 3.12 on Windows:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe main.py
+.\.venv\Scripts\python.exe -m unittest discover -p "test_*.py"
+.\.venv\Scripts\python.exe tools/check_release.py
 ```
 
-Run the focused offline checks with:
+`build.ps1` builds the native executable. `build-installer.ps1` builds the setup
+EXE with Inno Setup 7. CI runs offline checks and builds artifacts; it does not
+publish releases. See the [release checklist](docs/RELEASE_PROCESS.md) for package,
+upgrade and real-playback acceptance. Green unit tests are not certification of
+all devices, live sources or network conditions.
 
-```powershell
-.\.venv\Scripts\python.exe -m unittest test_service test_transport test_native_regressions test_native_captions test_subtitle_store test_audio_options test_library_store test_release_updates test_artwork test_browse_filters
-```
+## Website, analytics and contributing
 
-Run `verify_upgrade.py`, `verify_subtitle_fix.py` or `verify_audio.py` with the
-virtual-environment Python for opt-in live playback/input checks. These contact
-the upstream service and use isolated verification data. Run `./build.ps1` in
-PowerShell to rebuild the Windows executable and dependency notices.
-To build the setup EXE, install Inno Setup 7 and run `build-installer.ps1`, passing
-`-Compiler` with the path to `ISCC.exe` if it is not detected automatically.
+The [project website](https://emransm877.github.io/moviebox-desktop/) introduces
+both Windows and Android projects and combines their download counters. It
+separates application packages from checksum files and counts from unique users.
+Daily growth starts with recorded observations; earlier daily history cannot be
+reconstructed. [Collection rules and local preview](docs/ANALYTICS.md).
 
-The published source excludes local research, account data and captured runtime
-responses. Sixty-two offline tests cover service transport, subtitle handling and
-audio selection. Local native-player checks exercised 1080-tier playback,
-subtitles, seeking, audio switching and resume; these are bounded checks rather
-than certification of every title or network condition.
+Useful contributions include reproducible bug reports, supported-device test
+results, documentation and focused fixes. See [CONTRIBUTING.md](CONTRIBUTING.md),
+[SECURITY.md](SECURITY.md) and [the Android patch project](https://github.com/emransm877/moviebox-android).
 
-## Related projects and licensing
+## Independence and licensing
 
-- [Android patch source](https://github.com/emransm877/moviebox-android)
-- [Samsung Tizen TV client](https://github.com/emransm877/moviebox-tizen)
-
-Maintained by [Emran Hossain](https://github.com/emransm877). Independent project;
-not affiliated with MovieBox, Samsung or Microsoft. Original project code is MIT.
-Names, artwork and dependencies retain their respective owners' rights. See
-`LICENSE`, `THIRD_PARTY_NOTICES.txt`, `CONTRIBUTING.md` and `SECURITY.md`.
-
-## Themes and latest titles
-
-Settings offers five persistent themes with matching MovieBox logos. Home rotates up to 100 latest movies and TV shows, with Previous/Next/Pause and active-title Watch/More info actions. Existing features remain available. See [theme and spotlight behavior](docs/THEMES_AND_SPOTLIGHT.md).
-
-## Catalogue cache and Continue watching
-
-Movies/TV Shows restore their cached pages and position immediately. After five minutes, the app checks for new results in the background; Apply filters can refresh manually. In Continue watching choose **Select titles**, select one/several or **Select all**, then **Remove selected**. **Undo removal** restores the last batch during the current session. My list is preserved. See [details](docs/CACHE_AND_HISTORY.md).
+Maintained by [Emran Hossain](https://github.com/emransm877). Not affiliated with
+MovieBox, Microsoft or Google. MIT covers independently authored project code;
+names, logos, upstream applications, catalogue artwork and dependencies retain
+their owners' rights. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.txt).

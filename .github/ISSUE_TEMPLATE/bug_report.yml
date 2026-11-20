@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a reproducible Windows application problem
+title: '[Bug] '
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: 'Do not include tokens, session files, signed video URLs or private logs. Security reports belong in the private reporting channel described in SECURITY.md.'
+  - type: input
+    id: release
+    attributes:
+      label: Downloaded release and package
+      placeholder: 'Example: v0.10.3, setup EXE or portable ZIP'
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Windows version and architecture
+      placeholder: 'Example: Windows 11 x64'
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include whether video was playing, paused, seeking or buffering, and whether it affects multiple titles.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Safe evidence
+      description: Exact error text or a cropped application screenshot. Review for personal information before attaching.

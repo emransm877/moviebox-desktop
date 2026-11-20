@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Installation and troubleshooting
+    url: https://github.com/emransm877/moviebox-desktop/blob/main/docs/TROUBLESHOOTING.md
+    about: Check common installation, playback and saved-library issues first.
+  - name: Security reporting
+    url: https://github.com/emransm877/moviebox-desktop/blob/main/SECURITY.md
+    about: Keep vulnerability details and credentials out of public issues.
