@@ -36,8 +36,8 @@ See [release notes and SHA-256 files](https://github.com/emransm877/moviebox-des
 - This repository's downloads are not macOS, Linux or 32-bit Windows applications.
 - The Windows preview is not Authenticode signed. Compare the download's SHA-256
   with its release checksum; do not disable device security protections.
-  See the [Code signing policy and setup](docs/CODE_SIGNING.md) for the prepared
-  trusted-signing workflow and the provider approval still required.
+  The SignPath application has been submitted; provider approval is pending.
+  See the [Code signing policy and setup](docs/CODE_SIGNING.md).
 - The app contacts the upstream service for catalogue and playback. A working
   connection and a playable source are required; availability varies by title.
 

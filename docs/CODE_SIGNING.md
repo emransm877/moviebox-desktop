@@ -1,14 +1,22 @@
 # Code signing policy
 
 The currently published Windows 0.10.3 installer and portable application are
-unsigned. Signing infrastructure is being prepared; no signing-service
-application or approval is claimed. A checksum verifies file identity, not a
+unsigned. The SignPath Foundation application was submitted on 21 November 2026;
+the official form confirmed receipt. Approval and signing access are pending.
+A checksum verifies file identity, not a
 Windows publisher signature. Existing release assets will not be silently replaced.
 
 The maintainer is [Emran Hossain](https://github.com/emransm877). Public signing
 will cover this repository's independently built MovieBox.exe and installer.
 Third-party binaries retain their own licenses and signatures. Android APKs and
 Samsung TV certificates are separate and cannot establish Windows trust.
+
+## Signing application status
+
+Application submitted: **21 November 2026**. The official SignPath form displayed
+“Form submitted” and “Thank you, we'll be in touch soon.” This confirms submission,
+not acceptance, certificate issuance or a signed Windows release. No duplicate
+application should be sent while that review is pending.
 
 ## Obtain a validated signing identity
 

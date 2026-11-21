@@ -1,6 +1,7 @@
-# Prepared Windows signing application brief
+# Windows signing application brief
 
-Draft for the maintainer to review and submit. **Not submitted or approved.**
+Submitted through the official SignPath Foundation form on **21 November 2026**.
+The form confirmed receipt. **Approval is pending; no certificate has been issued.**
 
 - Project: MovieBox Desktop App; installed application name: MovieBox.
 - Repository: https://github.com/emransm877/moviebox-desktop
@@ -22,6 +23,7 @@ Draft for the maintainer to review and submit. **Not submitted or approved.**
   optional update checks reach GitHub. Source/license and network disclosures
   require review against the provider's current conditions before submission.
 
-The maintainer must confirm project-role details, account security, dependency
-license compliance and any provider-specific fields. This document cannot promise
-eligibility or replace the provider's approval.
+The provider may request additional project-role, account-security, dependency
+or provenance details during review. This document cannot promise eligibility
+or replace the provider's approval. The application's contact email is not
+published in this repository.
