@@ -29,12 +29,16 @@ artwork depend on the upstream service; they are not project-owned assets.*
 Source-branch fixes are not automatically present in an older downloaded installer.
 See [release notes and SHA-256 files](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.3).
 
+## Optional self-signed Windows preview
+
+A separate [0.10.3 self-signed preview](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.3-selfsigned.1) includes a signed setup EXE, signed application in a portable ZIP, public certificate, SHA-256 checksums and signature-integrity evidence. **The publisher certificate is not publicly trusted; Windows warnings may remain.** This is the same 0.10.3 application, not the unreleased 0.10.4 fixes. The stable downloads above are unchanged. Do not install the test certificate into trusted roots or disable device security. [Signing details](docs/CODE_SIGNING.md#self-signed-preview).
+
 ## Compatibility and installation
 
 - Windows 10 version 1809 or newer on x64-compatible systems. Native playback has
   been exercised on Windows 11 x64; Windows 10 and ARM emulation are not separately certified.
 - This repository's downloads are not macOS, Linux or 32-bit Windows applications.
-- The Windows preview is not Authenticode signed. Compare the download's SHA-256
+- The stable Windows 0.10.3 download is not Authenticode signed. Compare the download's SHA-256
   with its release checksum; do not disable device security protections.
   The SignPath application has been submitted; provider approval is pending.
   See the [Code signing policy and setup](docs/CODE_SIGNING.md).

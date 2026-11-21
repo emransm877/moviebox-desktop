@@ -11,6 +11,18 @@ will cover this repository's independently built MovieBox.exe and installer.
 Third-party binaries retain their own licenses and signatures. Android APKs and
 Samsung TV certificates are separate and cannot establish Windows trust.
 
+## Self-signed preview
+
+A separate [0.10.3 self-signed preview](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.3-selfsigned.1) is published at the maintainer's request. It signs the original 0.10.3 MovieBox.exe before building and signing a separate installer; a portable ZIP includes the signed launcher. This is a packaging preview, not the unreleased 0.10.4 code.
+
+Both EXE signatures use SHA-256 and DigiCert RFC3161 timestamps. Independent CMS signature and Authenticode PE-digest checks passed. Windows signature verification reports an untrusted root, as expected for a self-signed publisher certificate. No publicly trusted publisher identity has been issued.
+
+- Included: installer, portable ZIP, public `.cer`, SHA-256 checksum files, usage notes and cryptographic-integrity evidence.
+- Excluded: private key, account credentials and any instruction to bypass security. The private key is non-exportable in the maintainer's Windows Personal certificate store.
+- Do not add this certificate to Trusted Root Certification Authorities or Trusted Publishers to suppress warnings. Self-signing does not provide public Windows trust or guarantee SmartScreen reputation.
+- Existing stable assets remain byte-for-byte unchanged. This prerelease does not replace `releases/latest` or trigger stable-only update reminders.
+- The trusted-release signing helper below continues to reject self-signed certificates. SignPath approval is still pending.
+
 ## Signing application status
 
 Application submitted: **21 November 2026**. The official SignPath form displayed
