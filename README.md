@@ -98,8 +98,9 @@ all devices, live sources or network conditions.
 ## Website, analytics and contributing
 
 The [project website](https://emransm877.github.io/moviebox-projects/) introduces
-both Windows and Android projects and combines their download counters. It
-separates application packages from checksum files and counts from unique users.
+the published MovieBox projects and combines their release download counters.
+The native Android phone client and Android patch are separate projects. Counts
+separate application packages from checksum files and do not represent unique users.
 Daily growth starts with recorded observations; earlier daily history cannot be
 reconstructed. [Collection rules and local preview](docs/ANALYTICS.md).
 
@@ -117,7 +118,15 @@ their owners' rights. See [LICENSE](LICENSE) and [third-party notices](THIRD_PAR
 
 ## Other MovieBox platforms
 
-[Android phone patch](https://github.com/emransm877/moviebox-android) · [Samsung Tizen TV app](https://github.com/emransm877/moviebox-tizen) · [Android TV / Google TV app](https://github.com/emransm877/moviebox-android-tv)
+| Device | Separate project |
+| --- | --- |
+| Android phone - native client | [MovieBox Android Native](https://github.com/emransm877/moviebox-android-native) |
+| Android phone - reviewed APK patch | [MovieBox Android patch](https://github.com/emransm877/moviebox-android) |
+| Samsung Tizen TV | [MovieBox Samsung TV](https://github.com/emransm877/moviebox-tizen) |
+| Android TV / Google TV | [MovieBox Android TV](https://github.com/emransm877/moviebox-android-tv) |
+
+The independently authored native phone client uses a different APK and private
+library from the reviewed phone patch. Their lists and history are separate.
 
 Choose the package for your operating system. These are separate independent
 projects; an APK, Windows EXE and Samsung WGT are not interchangeable.
