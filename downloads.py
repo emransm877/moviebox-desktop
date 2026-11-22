@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 import threading
+import re
 from urllib.request import Request, urlopen
 
 
@@ -17,14 +18,27 @@ class Download:
 
     def run(self):
         partial = self.target.with_suffix(self.target.suffix + '.part')
-        self.target.parent.mkdir(parents=True, exist_ok=True)
-        offset = partial.stat().st_size if partial.exists() else 0
-        headers = dict(self.headers)
-        if offset:
-            headers['Range'] = f'bytes={offset}-'
         try:
+            self.target.parent.mkdir(parents=True, exist_ok=True)
+            offset = partial.stat().st_size if partial.exists() else 0
+            headers = dict(self.headers)
+            if offset:
+                headers['Range'] = f'bytes={offset}-'
             with urlopen(Request(self.url, headers=headers), timeout=20) as response:
-                append = offset > 0 and response.status == 206 and response.headers.get('Content-Range', '').startswith(f'bytes {offset}-')
+                append = False
+                if response.status == 206:
+                    match = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)', response.headers.get('Content-Range', ''))
+                    if not match:
+                        raise ValueError('Invalid partial download response')
+                    start, end, total = map(int, match.groups())
+                    if start != offset or end < start or end + 1 != total:
+                        raise ValueError('Incomplete or mismatched download range')
+                    length = response.headers.get('Content-Length')
+                    if length and int(length) != end - start + 1:
+                        raise ValueError('Download range length mismatch')
+                    append = offset > 0
+                elif response.status != 200:
+                    raise ValueError('Unexpected download response')
                 self.received = offset if append else 0
                 self.total = self.received + int(response.headers.get('Content-Length') or 0)
                 self.status = 'Downloading'

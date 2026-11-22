@@ -32,6 +32,7 @@ PATHS = {
     'user': '<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>',
     'search': '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
     'back': '<path d="m10 4-8 8 8 8M2 12h20"/>',
+    'close': '<path d="m6 6 12 12M18 6 6 18"/>',
     'play': '<path d="m8 4 13 8-13 8z"/>',
     'pause': '<path d="M8 5v14M16 5v14"/>',
     'fullscreen': '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m8 0h5v-5"/>',
@@ -96,6 +97,7 @@ def refresh_theme(window, selection):
     if hasattr(window, 'hero'):
         window.hero.apply_theme()
     themed_logo = ASSETS / ('moviebox-logo-' + QApplication.instance().property('movieboxTheme') + '.svg')
+    if not themed_logo.is_file():themed_logo=ASSETS/'moviebox-logo.svg'
     window.setWindowIcon(QIcon(str(themed_logo)))
     if hasattr(window, 'brand_logo'):
         window.brand_logo.setPixmap(QIcon(str(themed_logo)).pixmap(40,44))
@@ -130,9 +132,9 @@ def stylesheet(selection=True):
     QPushButton:pressed{background:SELECT}
     QPushButton:focus{border-color:#48e6b0}
     QPushButton:disabled{color:SECONDARY;background:transparent;border-color:LINE}
-    QPushButton#primary{background:#48e6b0;color:#08251a;border:1px solid #65efc0;font-weight:600}
-    QPushButton#primary:hover{background:#78f0c6}
-    QPushButton#primary:pressed{background:#2fcb96}
+    QPushButton#primary,QPushButton#settingsDone{background:#48e6b0;color:#08251a;border:1px solid #65efc0;font-weight:600}
+    QPushButton#primary:hover,QPushButton#settingsDone:hover{background:#78f0c6}
+    QPushButton#primary:pressed,QPushButton#settingsDone:pressed{background:#2fcb96}
     QPushButton#navItem{background:transparent;border:1px solid transparent;border-radius:8px;text-align:left;padding:12px 17px;font-size:14px}
     QPushButton#navItem:hover{background:HOVER;border-color:transparent}
     QPushButton#navItem:checked{background:SELECT;border-color:transparent;font-weight:600}
@@ -293,6 +295,7 @@ class HeroCard(QWidget):
         super().__init__()
         self.window, self.fetch_bytes = window, fetch_bytes
         self.image = QPixmap()
+        self.poster_mode = False
         self.loading_logo = QIcon(str(ASSETS / 'moviebox-logo.svg')).pixmap(128, 144)
         self.subject = None
         self.slides = []
@@ -322,30 +325,12 @@ class HeroCard(QWidget):
         self.meta.setStyleSheet('color:#c4ced9;font-size:12px')
         content.addWidget(self.meta)
         content.addStretch()
-        actions = QHBoxLayout()
-        actions.setSpacing(8)
-        self.explore = action('Watch now', self.open, 'play', primary=True)
-        self.explore.setFixedWidth(145)
-        actions.addWidget(self.explore)
-        self.info = action('More info', self.more_info)
-        actions.addWidget(self.info)
-        self.save = action('My list', self.save_subject, 'bookmark')
-        self.save.setStyleSheet('QPushButton{background:rgba(255,255,255,20);color:white;border:1px solid rgba(255,255,255,50)}QPushButton:hover{background:rgba(255,255,255,38)}')
-        actions.addWidget(self.save)
-        actions.addStretch()
-        self.previous = action('‹', lambda: self.advance(-1))
-        self.previous.setAccessibleName('Previous spotlight title')
-        self.next = action('›', lambda: self.advance(1))
-        self.next.setAccessibleName('Next spotlight title')
-        self.pause_rotation = action('Ⅱ', self.toggle_rotation)
-        self.pause_rotation.setAccessibleName('Pause slideshow')
-        self.counter = QLabel('1 / 1')
-        for control in (self.previous, self.next, self.pause_rotation):
-            control.setFixedWidth(34)
-            control.setStyleSheet('padding:8px 2px')
-            actions.addWidget(control)
-        actions.addWidget(self.counter)
-        content.addLayout(actions)
+        self.spatial=None
+        if hasattr(window,'art'):
+            from spatial_hero import SpatialHero
+            self.spatial=SpatialHero(window,self);self.spatial.lower();self.timer.stop()
+            self.spatial.selected.connect(self.spatial_selected);self.spatial.activated.connect(self.card_detail)
+            self.title.setMaximumWidth(330);self.meta.setMaximumWidth(330)
         self.apply_theme()
 
     def apply_theme(self):
@@ -354,17 +339,14 @@ class HeroCard(QWidget):
         self.title.setStyleSheet(f'color:{p["text"]};font-family:"{family}";font-size:{24 if getattr(self,"compact",False) else 31}px;font-weight:650;background:transparent')
         self.meta.setStyleSheet(f'color:{p["secondary"]};font-size:12px')
         self.eyebrow.setStyleSheet(f'color:{p["accent"]};font-size:10px;font-weight:650;letter-spacing:2px')
-        self.save.setStyleSheet('')
-        self.loading_logo = QIcon(str(ASSETS / ('moviebox-logo-' + QApplication.instance().property('movieboxTheme') + '.svg'))).pixmap(128,144)
+        logo=ASSETS/('moviebox-logo-'+QApplication.instance().property('movieboxTheme')+'.svg')
+        self.loading_logo = QIcon(str(logo if logo.is_file() else ASSETS/'moviebox-logo.svg')).pixmap(128,144)
+        if self.spatial:self.spatial.apply_theme()
         self.update()
 
     def set_slides(self, subjects):
-        seen = set()
-        slides = []
-        for subject in subjects:
-            identity = str(subject.get('subjectId') or '')
-            if identity and identity not in seen:
-                slides.append(subject); seen.add(identity)
+        from hero_feed import unique_spotlights
+        slides=unique_spotlights(subjects)
         if not slides:
             return
         # Preserve the exact active title while the latest-feed request completes.
@@ -374,10 +356,9 @@ class HeroCard(QWidget):
         if QApplication.focusWidget() and self.isAncestorOf(QApplication.focusWidget()):
             # Never change a focused Watch/More info target under the user.
             if active and not any(str(s['subjectId']) == active for s in self.slides):
-                self.slides = [self.subject] + self.slides[:99]
+                self.slides = unique_spotlights([self.subject]+self.slides)
                 self.slide_index = 0
         self.set_subject(self.slides[self.slide_index])
-        self.counter.setText(f'{self.slide_index + 1} / {len(self.slides)}')
 
     def advance(self, step, automatic=False):
         focused = QApplication.focusWidget()
@@ -387,32 +368,39 @@ class HeroCard(QWidget):
             return
         if len(self.slides) < 2:
             return
+        if self.spatial:
+            self.spatial.advance(step,manual=not automatic);return
         self.slide_index = (self.slide_index + step) % len(self.slides)
         self.set_subject(self.slides[self.slide_index])
-        self.counter.setText(f'{self.slide_index + 1} / {len(self.slides)}')
         self.timer.start()
 
     def toggle_rotation(self):
         self.rotation_paused = not self.rotation_paused
-        self.pause_rotation.setText('▶' if self.rotation_paused else 'Ⅱ')
-        self.pause_rotation.setAccessibleName('Resume slideshow' if self.rotation_paused else 'Pause slideshow')
+        if self.spatial:self.spatial.schedule(2000)
+
+    def spatial_selected(self,subject):
+        self.slide_index=next((i for i,s in enumerate(self.slides) if str(s['subjectId'])==str(subject['subjectId'])),0)
+        self.set_subject(subject,sync_scene=False)
 
     def more_info(self):
-        if self.subject:
-            self.window.hero_auto_play = ''
-            self.window.open_detail(self.subject)
+        self.card_detail(self.subject)
+
+    def card_detail(self,subject):
+        if subject:
+            self.window.hero_auto_play=''
+            self.window.open_detail(subject)
 
     def set_compact(self, compact):
         if getattr(self, 'compact', None) == compact:
             return
         self.compact = compact
-        self.setFixedHeight(172 if compact else 248)
+        self.setFixedHeight((230 if compact else 300) if self.spatial else (172 if compact else 248))
         self.layout().setContentsMargins(24, 15, 24, 15) if compact else self.layout().setContentsMargins(28, 23, 28, 23)
         self.layout().setSpacing(6 if compact else 9)
         self.layout().itemAt(0).widget().setVisible(not compact)
         self.apply_theme()
 
-    def set_subject(self, subject):
+    def set_subject(self, subject, sync_scene=True):
         self.subject = subject
         self.image = QPixmap()
         self.update()
@@ -422,42 +410,35 @@ class HeroCard(QWidget):
         self.title.setText(title[:100])
         self.meta.setText('  ·  '.join(str(x) for x in [str(subject.get('releaseDate') or '')[:4],
             subject.get('genre', '').replace(',', ' · '), ('IMDb ' + str(subject['imdbRatingValue'])) if subject.get('imdbRatingValue') else ''] if x))
+        if self.spatial:
+            if sync_scene:
+                queue=self.slides if any(str(s['subjectId'])==str(subject['subjectId']) for s in self.slides) else [subject]+self.slides[:99]
+                self.spatial.set_subjects(queue,subject['subjectId'])
+            return
         url, self.banner_source = banner_artwork(subject)
+        self.poster_mode = not bool(url)
+        if self.poster_mode:
+            url = (subject.get('cover') or {}).get('url')
         if not url:
             return
+        poster_mode = self.poster_mode
         def load():
             buffer = QBuffer()
             buffer.setData(QByteArray(self.fetch_bytes(url)))
             buffer.open(QIODevice.ReadOnly)
             reader = QImageReader(buffer)
             size = reader.size()
-            if not size.isValid() or size.width()<1280 or size.height()<600 or size.width()/max(1,size.height())<1.45:
+            if not size.isValid() or (not poster_mode and (size.width()<640 or size.height()<320 or not 1.45<=size.width()/max(1,size.height())<=3.2)):
                 return QImage()
             if size.isValid():
-                size.scale(QSize(1400, 900), Qt.KeepAspectRatio)
+                size.scale(QSize(500,900) if poster_mode else QSize(1400,900), Qt.KeepAspectRatio)
                 reader.setScaledSize(size)
             return reader.read()
         def ready(image):
-            if generation == self.generation and not image.isNull() and image.width()/max(1,image.height())>=1.45:
+            if generation == self.generation and not image.isNull() and (poster_mode or 1.45<=image.width()/max(1,image.height())<=3.2):
                 self.image = QPixmap.fromImage(image)
                 self.update()
-        self.window.submit(load, ready, message='', failure=lambda message: None)
-
-    def open(self):
-        if self.subject:
-            self.window.hero_auto_play = str(self.subject['subjectId'])
-            self.window.open_detail(self.subject)
-
-    def save_subject(self):
-        if self.subject:
-            key = str(self.subject['subjectId'])
-            if key in self.window.state['saved']:
-                del self.window.state['saved'][key]
-                self.save.setText('My list')
-            else:
-                self.window.state['saved'][key] = self.subject
-                self.save.setText('Saved')
-            self.window.persist()
+        self.window.submit(load, ready, message='', failure=lambda message: None, executor=getattr(self.window,'art_pool',None))
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -468,9 +449,16 @@ class HeroCard(QWidget):
         painter.setClipPath(path)
         p = palette(QApplication.instance().property('movieboxTheme'))
         painter.fillRect(self.rect(), QColor(p['hero']))
-        if not self.image.isNull():
-            source=QRectF(*banner_source_rect(self.image.width(),self.image.height(),self.width(),self.height()))
-            painter.drawPixmap(QRectF(self.rect()),self.image,source)
+        if self.spatial:
+            pass
+        elif not self.image.isNull():
+            if self.poster_mode:
+                width=min(390,self.width()*.38)
+                target=QRectF(*fit_rect(self.image.width(),self.image.height(),self.width()-width,0,width,self.height()))
+                painter.drawPixmap(target,self.image,QRectF(self.image.rect()))
+            else:
+                source=QRectF(*banner_source_rect(self.image.width(),self.image.height(),self.width(),self.height()))
+                painter.drawPixmap(QRectF(self.rect()),self.image,source)
         else:
             painter.setOpacity(.18)
             painter.drawPixmap(self.width() - 235, (self.height() - 144) // 2, self.loading_logo)
@@ -488,6 +476,12 @@ class HeroCard(QWidget):
         painter.setPen(QColor(255, 255, 255, 22))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(QRectF(self.rect()).adjusted(.5, .5, -.5, -.5), 18, 18)
+
+    def resizeEvent(self,event):
+        super().resizeEvent(event)
+        if self.spatial:
+            left=365 if self.width()>=1000 else 320
+            self.spatial.setGeometry(left,10,max(100,self.width()-left-18),max(100,self.height()-20))
 
 
 def set_nav(window, name):
@@ -540,100 +534,8 @@ def apply_theme_layout(window):
 
 
 def open_settings(window):
-    dialog = QDialog(window)
-    dialog.setWindowTitle('MovieBox settings')
-    dialog.setMinimumWidth(470)
-    available = QApplication.primaryScreen().availableGeometry()
-    dialog.resize(560, min(760, available.height() - 80))
-    dialog.setMaximumHeight(max(450, available.height() - 60))
-    outer = QVBoxLayout(dialog)
-    scroll = QScrollArea()
-    scroll.setWidgetResizable(True)
-    scroll.setFrameShape(QFrame.NoFrame)
-    body = QWidget()
-    scroll.setWidget(body)
-    outer.addWidget(scroll)
-    layout = QVBoxLayout(body)
-    layout.setContentsMargins(28, 24, 28, 24)
-    layout.setSpacing(18)
-    title = QLabel('Make it yours')
-    title.setObjectName('heading')
-    layout.addWidget(title)
-    layout.addWidget(QLabel('MovieBox theme'))
-    appearance = FluentComboBox()
-    appearance.setObjectName('themePicker')
-    appearance.setAccessibleName('MovieBox theme')
-    modes = list(THEMES)
-    for key in modes:
-        appearance.addItem(THEMES[key]['name'], key)
-    appearance.setCurrentIndex(modes.index(initial_theme(window.state, system_is_dark())))
-    theme_hint = QLabel(THEMES[modes[appearance.currentIndex()]]['description'])
-    theme_hint.setWordWrap(True)
-    theme_hint.setObjectName('muted')
-    def change(index):
-        mode = modes[index]
-        window.state['theme'] = mode
-        window.state['appearance'] = 'theme'
-        appearance_mode.blockSignals(True)
-        appearance_mode.setCurrentIndex(0)
-        appearance_mode.blockSignals(False)
-        window.persist()
-        refresh_theme(window, mode)
-        theme_hint.setText(THEMES[mode]['description'])
-        apply_window_material(dialog, THEMES[mode]['dark'])
-    appearance.currentIndexChanged.connect(change)
-    layout.addWidget(appearance)
-    layout.addWidget(theme_hint)
-    # Preserve the previous Dark / Light / Follow Windows appearance feature.
-    layout.addWidget(QLabel('Appearance'))
-    appearance_mode = FluentComboBox()
-    appearance_mode.setObjectName('appearancePicker')
-    appearance_modes = ['theme','dark','light','system']
-    appearance_mode.addItems(['Use selected theme colours','Dark','Light','Follow Windows'])
-    appearance_mode.setCurrentIndex(appearance_modes.index(window.state.get('appearance','theme')) if window.state.get('appearance','theme') in appearance_modes else 0)
-    def change_appearance(index):
-        mode = appearance_modes[index]
-        window.state['appearance'] = mode
-        if mode != 'theme':
-            key = 'aurora' if mode == 'light' or (mode == 'system' and not system_is_dark()) else 'obsidian'
-            window.state['theme'] = key
-            appearance.blockSignals(True)
-            appearance.setCurrentIndex(modes.index(key))
-            appearance.blockSignals(False)
-            theme_hint.setText(THEMES[key]['description'])
-        refresh_theme(window, window.state.get('theme','obsidian'))
-        window.persist()
-    appearance_mode.currentIndexChanged.connect(change_appearance)
-    layout.addWidget(appearance_mode)
-    layout.addWidget(QLabel('Subtitle text size'))
-    size = QSpinBox()
-    size.setObjectName('subtitleSize')
-    size.setRange(16, 44)
-    size.setSuffix(' px')
-    size.setValue(int(window.state.get('subtitle_size', 24)))
-    size.lineEdit().setTextMargins(14,0,10,0)
-    size.lineEdit().setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-    def set_size(value):
-        window.state['subtitle_size'] = value
-        window.persist()
-        window.video.caption.setStyleSheet(f'background:rgba(0,0,0,180);color:white;font-size:{value}px;font-weight:600;padding:8px;border-radius:7px')
-    size.valueChanged.connect(set_size)
-    layout.addWidget(size)
-    updates = QCheckBox('Notify me about optional MovieBox updates')
-    updates.setChecked(window.state['update_notifications'].get('enabled', True))
-    updates.toggled.connect(window.configure_optional_updates)
-    layout.addWidget(updates)
-    check_updates = action('Check for updates', lambda: window.check_optional_updates(force=True))
-    check_updates.setEnabled(updates.isChecked())
-    updates.toggled.connect(check_updates.setEnabled)
-    layout.addWidget(check_updates)
-    hint = QLabel('F11 · Fullscreen     Esc · Back     Ctrl+K · Search\nPlayback quality follows available sources and your connection.')
-    hint.setWordWrap(True)
-    hint.setObjectName('muted')
-    layout.addWidget(hint)
-    outer.addWidget(action('Done', dialog.accept, primary=True), 0, Qt.AlignRight)
-    QTimer.singleShot(0, lambda: apply_window_material(dialog, bool(QApplication.instance().property('movieboxDark'))))
-    dialog.exec()
+    from settings_ui import build_settings_dialog
+    build_settings_dialog(window).exec()
 
 
 def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
@@ -675,7 +577,7 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     brand_row.addStretch()
     side.addLayout(brand_row)
     w.nav_buttons = {}
-    entries = [('home','Home','home', w.show_discover),
+    entries = [('home','Discover','home', w.show_discover),
                ('movies','Movies','movie',lambda: browse_kind(w,'movies')),
                ('series','TV Shows','series',lambda: browse_kind(w,'series')),
                ('anime','Anime','anime',lambda: browse_kind(w,'anime'))]
@@ -687,7 +589,7 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     library_label.setObjectName('sectionLabel')
     side.addWidget(library_label)
     for key, text, glyph, callback in [('saved','My list','bookmark',w.show_saved),
-            ('history','Continue watching','history',w.show_history),('downloads','Downloads','download',w.show_downloads)]:
+            ('history','History','history',w.show_history),('downloads','Downloads','download',w.show_downloads)]:
         item = NavButton(text, glyph, callback)
         w.nav_buttons[key] = item
         side.addWidget(item)
@@ -760,7 +662,6 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     cat.setContentsMargins(0, 0, 0, 0)
     cat.setSpacing(17)
     w.hero = HeroCard(w, fetch_bytes)
-    cat.addWidget(w.hero)
     row = QHBoxLayout()
     titles = QVBoxLayout()
     titles.setSpacing(4)
@@ -780,6 +681,9 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     w.more.hide()
     row.addWidget(w.more)
     cat.addLayout(row)
+    cat.addWidget(w.hero)
+    from home_panels import ContinueStrip
+    w.continue_strip=ContinueStrip(w);cat.addWidget(w.continue_strip)
     w.history_toolbar = QWidget()
     history_tools = QHBoxLayout(w.history_toolbar)
     history_tools.setContentsMargins(0,0,0,0)
@@ -883,7 +787,6 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     episode_row = QHBoxLayout(w.season_row)
     episode_row.setContentsMargins(0,0,0,0)
     w.season, w.episode = FluentComboBox(), FluentComboBox()
-    w.season.setMinimumWidth(140)
     w.episode.setMinimumWidth(140)
     w.season.currentIndexChanged.connect(w.populate_episodes)
     w.episode.currentIndexChanged.connect(w.update_episode_selection)
@@ -1009,7 +912,7 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     w.caption_selector.currentIndexChanged.connect(w.change_captions);transport.addWidget(w.caption_selector)
     w.audio_tracks=PlayerIconPicker('audio-tracks','Audio language');w.audio_tracks.addItem('Audio · Original',None)
     w.audio_tracks.currentIndexChanged.connect(w.change_audio);transport.addWidget(w.audio_tracks)
-    w.episode_browser_button=action('Seasons & episodes · Up arrow',w.open_player_episodes,'player-episodes',quiet=True,icon_only=True)
+    w.episode_browser_button=action('Seasons & episodes',w.open_player_episodes,'player-episodes',quiet=True,icon_only=True)
     w.episode_browser_button.hide();transport.addWidget(w.episode_browser_button)
     w.video_fit_button=action('Video size: Fit',w.cycle_video_fit,'player-video-scale-fit',quiet=True,icon_only=True)
     transport.addWidget(w.video_fit_button)
@@ -1060,11 +963,11 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     w.player_episode_panel.setObjectName('playerEpisodePanel')
     w.player_episode_panel.setCursor(Qt.ArrowCursor)
     drawer=QVBoxLayout(w.player_episode_panel)
-    drawer.setContentsMargins(22,20,22,20);drawer.setSpacing(16)
+    drawer.setContentsMargins(18,14,18,14);drawer.setSpacing(10)
     drawer_header=QHBoxLayout()
-    drawer_title=QLabel('Seasons & episodes');drawer_title.setStyleSheet('font-size:20px;font-weight:600')
+    drawer_title=QLabel('Seasons & episodes');drawer_title.setStyleSheet('font-size:16px;font-weight:600')
     drawer_header.addWidget(drawer_title);drawer_header.addStretch()
-    drawer_header.addWidget(action('Close',w.close_player_episodes))
+    drawer_header.addWidget(action('Close',w.close_player_episodes,'close',quiet=True,icon_only=True))
     drawer.addLayout(drawer_header)
     w.player_season_picker=FluentComboBox()
     w.player_season_picker.setFixedWidth(144)
@@ -1074,11 +977,12 @@ def build_ui(w, catalog_model_type, delegate_type, video_type, fetch_bytes):
     w.player_episode_list=QListWidget()
     w.player_episode_list.setObjectName('playerEpisodes')
     w.player_episode_list.setAccessibleName('Player episodes')
+    w.player_episode_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
     w.player_episode_list.itemClicked.connect(w.play_player_episode)
     w.player_episode_list.itemActivated.connect(w.play_player_episode)
     drawer.addWidget(w.player_episode_list,1)
-    drawer_hint=QLabel('Choose an episode to play. Browsing keeps your video playing.')
-    drawer_hint.setWordWrap(True);drawer_hint.setObjectName('muted')
+    drawer_hint=QLabel('Browsing keeps playback running.')
+    drawer_hint.setWordWrap(True);drawer_hint.setObjectName('muted');drawer_hint.setStyleSheet('font-size:12px')
     drawer.addWidget(drawer_hint)
     w.player_episode_panel.hide()
 

@@ -17,9 +17,15 @@ jobs:
       - run: python -m venv .venv
       - run: .\.venv\Scripts\python.exe -m pip install -r requirements.txt
       - run: .\.venv\Scripts\python.exe -m unittest discover -p "test_*.py"
+      - name: Native Settings keyboard and twenty-theme checks
+        run: .\.venv\Scripts\python.exe verify_settings_design.py --output verification/settings-ci
+      - name: Owned-media control and stalled-source regression
+        run: .\.venv\Scripts\python.exe verify_offline_audit.py --output verification/offline-ci
+      - name: Native twenty-theme geometry, gesture and history resume checks
+        run: .\.venv\Scripts\python.exe verify_spatial_home.py --output verification/spatial-ci --generated-fixtures --media verification/offline-ci/owned-fixture.avi
       - run: .\.venv\Scripts\python.exe tools/check_release.py
       - run: .\.venv\Scripts\python.exe tools/check_docs.py
-      - run: .\.venv\Scripts\python.exe -m compileall -q main.py fluent_ui.py interactions.py subtitle_store.py audio_options.py
+      - run: .\.venv\Scripts\python.exe -m compileall -q main.py fluent_ui.py interactions.py subtitle_store.py audio_options.py settings_ui.py spatial_hero.py home_panels.py themes.py json_transport.py
       - name: Build native application
         shell: powershell
         run: ./build.ps1

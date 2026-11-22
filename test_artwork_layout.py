@@ -19,8 +19,26 @@ class FullArtworkTests(unittest.TestCase):
         self.assertEqual(banner_artwork({'cover':portrait,'stills':{'url':'actual-backdrop','width':1920,'height':1080}}),('actual-backdrop','stills'))
         self.assertEqual(banner_artwork({'cover':portrait,'trailer':{'cover':{'url':'actual-trailer-frame','width':854,'height':480}}}),('',None))
     def test_unknown_low_resolution_and_other_title_images_are_rejected(self):
-        for record in [{'url':'unknown'}, {'url':'tiny','width':854,'height':480}, {'url':'other','width':1920,'height':1080,'subjectId':'other'}, {'url':'poster','width':1500,'height':2222}]:
+        for record in [{'url':'unknown'}, {'url':'tiny','width':639,'height':319}, {'url':'other','width':1920,'height':1080,'subjectId':'other'}, {'url':'poster','width':1500,'height':2222}]:
             self.assertEqual(banner_artwork({'subjectId':'selected','stills':record}),('',None))
+    def test_native_banner_container_joins_exact_subject_and_skips_promotions(self):
+        item={'subjectId':'native-one','subjectType':2,'title':'Exact native title','releaseDate':'2026-01-01'}
+        row={'subjectId':'native-one','subject':dict(item),'image':{'url':'native-wide','width':3840,'height':2160}}
+        index={}
+        prepare_artwork({'items':[{'banner':{'banners':[row,dict(row,subjectId='0'),dict(row,subjectId='wrong')]}}]},index)
+        self.assertEqual(set(index),{'native-one'})
+        joined=prepare_artwork(dict(item),index)
+        self.assertEqual(banner_artwork(joined),('native-wide','banner'))
+        for field,value in [('title','Other title'),('releaseDate','2025-01-01'),('subjectType',1),('subjectId','other')]:
+            self.assertEqual(banner_artwork(prepare_artwork(dict(item,**{field:value}),index)),('',None))
+    def test_genuine_920_by_518_banner_is_usable_without_hd_upscaling_claim(self):
+        self.assertEqual(banner_artwork({'subjectId':'campus','banner':{'url':'actual-wide','width':920,'height':518}}),('actual-wide','banner'))
+    def test_native_year_and_web_full_date_join_but_missing_or_conflicting_years_do_not(self):
+        native={'subjectId':'5705878031781299520','subjectType':2,'title':'Percy Jackson et Les Olympiens [Version fran\u00e7aise]','releaseDate':'2023'}
+        index={};prepare_artwork({'items':[{'banner':{'banners':[{'subjectId':native['subjectId'],'subject':dict(native),'image':{'url':'actual-native-banner','width':3840,'height':2160}}]}}]},index)
+        self.assertEqual(banner_artwork(prepare_artwork(dict(native,releaseDate='2023-12-20'),index)),('actual-native-banner','banner'))
+        for value in ['2024-12-20','','unknown','2023-99-99','0000']:
+            self.assertEqual(banner_artwork(prepare_artwork(dict(native,releaseDate=value),index)),('',None))
     def test_official_mapping_requires_exact_id_title_year_and_type(self):
         subject={'subjectId':'542588344010695272','title':'Murder in Galicia','releaseDate':'2026-11-13','subjectType':2}
         url,source=banner_artwork(subject)

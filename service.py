@@ -7,7 +7,11 @@ import hashlib
 import json
 import threading
 import time
+from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from artwork_layout import prepare_artwork
+from json_transport import read_json
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
@@ -28,6 +32,8 @@ class MovieBoxService:
         self.last_play_info = {}
         self.lock = threading.Lock()
         self.banner_index = {}
+        self.detail_cache = OrderedDict()
+        self.detail_workers = ThreadPoolExecutor(max_workers=2, thread_name_prefix='moviebox-metadata')
         self.native = None
         if use_native:
             from native_mobile import NativeMovieBox
@@ -38,6 +44,7 @@ class MovieBoxService:
         headers = {
             'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json',
             'Content-Type': 'application/json', 'Referer': SITE + '/',
+            'Accept-Encoding': 'gzip',
             'X-Request-Lang': 'en',
             'X-Client-Info': json.dumps({'timezone': 'Asia/Dhaka'}),
             'X-Vip-Restrict': '1',
@@ -59,10 +66,12 @@ class MovieBoxService:
             if user:
                 with self.lock:
                     self.token = json.loads(user).get('token', self.token)
-            data = json.load(response)
+            data = read_json(response)
         if data.get('code') != 0:
             raise ServiceError(data.get('message') or 'MovieBox could not complete this request.')
         with self.lock:
+            native_home = getattr(self.native,'home_data',None) if self.native else None
+            if isinstance(native_home,dict):prepare_artwork(native_home,self.banner_index)
             return prepare_artwork(data.get('data'), self.banner_index)
 
     def home(self):
@@ -80,6 +89,30 @@ class MovieBoxService:
         return response.get('items') or []
 
     def detail(self, subject):
+        key = (str(subject['subjectId']), self.account_token)
+        with self.lock:
+            cached = self.detail_cache.get(key)
+            if cached and time.monotonic()-cached[0] < 60:
+                self.detail_cache.move_to_end(key)
+                return deepcopy(cached[1])
+        # Native episode metadata and web descriptions are independent. Use a
+        # separate bounded executor, never nest work in the UI's API pool.
+        native_future = None
+        if self.native and str(subject.get('subjectType')) == '2':
+            native_future = self.detail_workers.submit(self.native.season_info, subject['subjectId'])
+        data = self._load_detail(subject, native_future)
+        with self.lock:
+            # Failed native lookups remain retryable instead of caching a degraded result.
+            if data.get('nativeMetadataAvailable', True):
+                self.detail_cache[key] = (time.monotonic(), deepcopy(data))
+                self.detail_cache.move_to_end(key)
+                while len(self.detail_cache)>64:self.detail_cache.popitem(last=False)
+        return data
+
+    def close(self):
+        self.detail_workers.shutdown(wait=False, cancel_futures=True)
+
+    def _load_detail(self, subject, native_future):
         data = self.request('/detail?' + urlencode({'subjectId': subject['subjectId']}))
         item = data.get('subject') or subject
         try:
@@ -99,7 +132,7 @@ class MovieBoxService:
             return data
         if kind == 2 and self.native:
             try:
-                native = self.native.season_info(item['subjectId'])
+                native = native_future.result() if native_future is not None else self.native.season_info(item['subjectId'])
                 if isinstance(native.get('seasons'), list):
                     resource['seasons'] = native['seasons']
                 data['nativeMetadataAvailable'] = True

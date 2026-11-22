@@ -32,8 +32,8 @@ from audio_options import audio_variants, language_label, with_audio, matching_r
 from library_store import LibraryStore
 import release_updates
 from artwork import resized_artwork
-from artwork_layout import fit_rect
 from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
+from artwork_layout import fill_source_rect
 from series_policy import next_episode as following_episode, next_up_at, episode_numbers
 
 APP_VERSION = '0.10.4'
@@ -288,6 +288,11 @@ class PosterDelegate(QStyledItemDelegate):
     def sizeHint(self, option, index):
         return QSize(184, 316)
 
+    @staticmethod
+    def image_source_rect(width,height,target_width,target_height):
+        """Crop proportionally just enough to fill a catalogue frame."""
+        return QRectF(*fill_source_rect(width,height,target_width,target_height))
+
     def paint(self, painter, option, index):
         item = index.data(Qt.UserRole) or {}
         dark = bool(QApplication.instance().property('movieboxDark'))
@@ -309,14 +314,15 @@ class PosterDelegate(QStyledItemDelegate):
             painter.save()
             painter.setClipPath(clip)
             painter.setRenderHint(QPainter.SmoothPixmapTransform)
-            target = QRectF(*fit_rect(image.width(), image.height(), cover.x(), cover.y(), cover.width(), cover.height()))
-            painter.drawPixmap(target, image, QRectF(image.rect()))
+            source = self.image_source_rect(image.width(),image.height(),cover.width(),cover.height())
+            painter.drawPixmap(cover, image, source)
             painter.restore()
         painter.setPen(QColor('#f1f5fb' if dark else '#182431'))
         painter.setFont(QFont('Segoe UI Variable Text', 10, QFont.DemiBold))
         title_rect = rect.adjusted(0, int(base_cover.height()) + 10, 0, -22)
-        title = painter.fontMetrics().elidedText(item.get('title', ''), Qt.ElideRight, rect.width())
-        painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignTop, title)
+        painter.save();painter.setClipRect(title_rect)
+        painter.drawText(title_rect, Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, item.get('title', ''))
+        painter.restore()
         painter.setPen(QColor('#91a0b4' if dark else '#647286'))
         painter.setFont(QFont('Segoe UI Variable Text', 9))
         year = str(item.get('releaseDate') or '')[:4]
@@ -420,12 +426,12 @@ class Window(QMainWindow):
     detail_ready = Signal()
     playback_ready = Signal()
 
-    def __init__(self):
+    def __init__(self, api=None):
         super().__init__()
         self.setWindowTitle('MovieBox Desktop · Preview')
         self.resize(1320, 860)
         self.setMinimumSize(950, 650)
-        self.api = MovieBoxService()
+        self.api = api if api is not None else MovieBoxService()
         try:
             self.api.account_token = protect_session((DATA / 'session.bin').read_bytes(), decrypt=True).decode()
         except (OSError, ValueError, UnicodeError):
@@ -504,6 +510,19 @@ class Window(QMainWindow):
         QTimer.singleShot(0, self.load_home)
         if self.api.native:
             self.submit(self.api.native.warm_up, lambda result: None, message='', failure=lambda message: None)
+        QApplication.instance().styleHints().colorSchemeChanged.connect(self.system_appearance_changed)
+
+    def system_appearance_changed(self, scheme):
+        if getattr(self, 'closing', False) or self.state.get('appearance') != 'system':
+            return
+        from fluent_ui import refresh_theme, system_is_dark
+        dark = system_is_dark() if scheme == Qt.ColorScheme.Unknown else scheme == Qt.ColorScheme.Dark
+        theme = 'obsidian' if dark else 'aurora'
+        if self.state.get('theme') == theme:
+            return
+        self.state['theme'] = theme
+        refresh_theme(self, theme)
+        self.persist()
 
     def setup_optional_updates(self):
         self.update_notice = None
@@ -577,10 +596,10 @@ class Window(QMainWindow):
         else:
             self.check_optional_updates()
 
-    def submit(self, fn, done, *, message='Loading…', failure=None):
+    def submit(self, fn, done, *, message='Loading…', failure=None, executor=None):
         if getattr(self,'closing',False):
             future=Future();future.cancel();return future
-        future = self.pool.submit(fn)
+        future = (executor or self.pool).submit(fn)
         self.await_future(future, done, failure)
         if message:
             self.status.setText(message)
@@ -866,7 +885,8 @@ class Window(QMainWindow):
         if first_subject and not getattr(self, 'hero_feed_started', False):
             self.hero_feed_started = True
             from hero_feed import latest_titles
-            self.submit(lambda: latest_titles(self.api), self.hero.set_slides, message='', failure=lambda _: None)
+            retained=[subject for row in self.sections.values() for subject in row]
+            self.submit(lambda: latest_titles(self.api,retained=retained), self.hero.set_slides, message='', failure=lambda _: None)
         active_home = self.nav_buttons['home'].isChecked() or (
             not any(button.isChecked() for button in self.nav_buttons.values())
             and self.heading.text() == 'Find your next favorite'
@@ -907,6 +927,7 @@ class Window(QMainWindow):
             self.empty.setText(message)
         self.status.setText(f'{len(self.catalog_model.items)} titles · Select a poster to explore')
         self.stack.setCurrentIndex(0)
+        if hasattr(self,'continue_strip'):self.continue_strip.refresh()
 
     def browse_catalogue(self, kind):
         """Browse the full service catalogue, independently of homepage sections."""
@@ -1291,8 +1312,12 @@ class Window(QMainWindow):
         generation = self.request_generation
         self.stack.setCurrentIndex(1)
         self.detail_title.setText(subject.get('title', ''))
-        self.description.setText('Loading description…')
+        self.description.setText(subject.get('description') or 'Loading description…')
+        self.detail_meta.setText('  ·  '.join(str(v) for v in [str(subject.get('releaseDate') or '')[:4],subject.get('genre'),subject.get('countryName')] if v))
         self.detail_cover.clear()
+        self.season_row.hide();self.episode_panel.hide()
+        cached_cover=self.art.images.get((subject.get('cover') or {}).get('url'))
+        if cached_cover is not None:self.detail_cover.setPixmap(cached_cover)
         self.watch.setEnabled(False)
         self.trailer.setEnabled(False)
         self.save.setEnabled(False)
@@ -1327,7 +1352,7 @@ class Window(QMainWindow):
             if not decoded.isNull():
                 image = QPixmap.fromImage(decoded)
                 self.detail_cover.setPixmap(image)
-        self.submit(lambda: Artwork.fetch_image(url), ready, message='', failure=lambda message: None)
+        self.submit(lambda: Artwork.fetch_image(url), ready, message='', failure=lambda message: None, executor=self.art_pool)
 
     def detail_loaded(self, data, generation):
         if generation != self.request_generation:
@@ -1347,6 +1372,7 @@ class Window(QMainWindow):
         seasons = ((data.get('resource') or {}).get('seasons') or []) if is_series else []
         for season in seasons:
             self.season.addItem('Season ' + str(season.get('se', 0)), season)
+        self.season.fit_contents()
         self.season.blockSignals(False)
         self.season.setVisible(bool(seasons))
         self.season_row.setVisible(bool(seasons))
@@ -1356,7 +1382,8 @@ class Window(QMainWindow):
         previous = [(key, value) for key, value in self.state['history'].items()
                     if key.startswith(str(item['subjectId']) + ':')]
         if previous:
-            key, _ = max(previous, key=lambda pair: pair[1].get('updated', 0))
+            resume=getattr(self,'resume_selection',None)
+            key, _ = next((pair for pair in previous if resume==(generation,pair[0])),max(previous, key=lambda pair: pair[1].get('updated', 0)))
             try:
                 _, saved_season, saved_episode = key.split(':')
                 for index in range(self.season.count()):
@@ -1420,6 +1447,8 @@ class Window(QMainWindow):
         self.continuation_starting=continuation
         if not self.current or not self.detail_data:
             return
+        if self.detail_data.get('isForbid') or not self.current.get('hasResource',True):
+            self.show_error('This title is not currently available for playback.');return
         subject = self.selected_playback_subject().copy()
         movie = int(subject.get('subjectType') or 0) == 1
         season = 0 if movie else int((self.season.currentData() or {}).get('se') or 0)
@@ -1619,7 +1648,7 @@ class Window(QMainWindow):
             if int(record.get('se') or 0)>0:self.player_season_picker.addItem('Season '+str(record['se']),record)
         for row in range(self.player_season_picker.count()):
             if int(self.player_season_picker.itemData(row).get('se') or 0)==int(season):self.player_season_picker.setCurrentIndex(row);break
-        self.player_season_picker.setFixedWidth(max(128,min(180,max((self.player_season_picker.fontMetrics().horizontalAdvance(self.player_season_picker.itemText(i)) for i in range(self.player_season_picker.count())),default=0)+56)))
+        self.player_season_picker.fit_contents()
         self.player_season_picker.blockSignals(False);self.populate_player_episodes()
         self.next_up_panel.hide();self.player_episode_panel.show();self.position_player_episodes();self.player_episode_panel.raise_()
         self.player_episode_panel.activateWindow();self.player_season_picker.setFocus()
@@ -1638,11 +1667,12 @@ class Window(QMainWindow):
         for number in episode_numbers(record):
             active=current==[str(record.get('se')),str(number)]
             item=QListWidgetItem(f'Episode {number}'+('  ·  Playing' if active else ''))
-            item.setData(Qt.UserRole,(int(record.get('se') or 0),number));item.setSizeHint(QSize(300,48))
+            item.setData(Qt.UserRole,(int(record.get('se') or 0),number));item.setSizeHint(QSize(0,42))
             self.player_episode_list.addItem(item)
             if active:self.player_episode_list.setCurrentItem(item)
         if self.player_episode_list.currentRow()<0 and self.player_episode_list.count():self.player_episode_list.setCurrentRow(0)
         self.player_episode_list.scrollToItem(self.player_episode_list.currentItem()) if self.player_episode_list.currentItem() else None
+        self.position_player_episodes()
 
     def close_player_episodes(self):
         if hasattr(self,'player_episode_animation'):self.player_episode_animation.stop()
@@ -1654,8 +1684,29 @@ class Window(QMainWindow):
     def position_player_episodes(self):
         panel=getattr(self,'player_episode_panel',None)
         if panel is None or not panel.isVisible():return
-        origin=self.video.mapToGlobal(QPoint(0,0));width=min(440,max(300,self.video.width()-24));height=max(180,self.video.height()-24)
-        panel.resize(width,height);panel.move(origin.x()+self.video.width()-width-12,origin.y()+12)
+        origin=self.video.mapToGlobal(QPoint(0,0))
+        layout=panel.layout();margins=layout.contentsMargins()
+        longest=max((self.player_episode_list.fontMetrics().horizontalAdvance(self.player_episode_list.item(i).text()) for i in range(self.player_episode_list.count())),default=0)
+        desired=max(layout.itemAt(0).sizeHint().width(),longest+36,self.player_season_picker.width())+margins.left()+margins.right()
+        width=min(440,self.video.width()-24,max(220,desired))
+        top,bottom=origin.y()+12,origin.y()+self.video.height()-12
+        if self.cinema and self.cinema.isVisible() and self.cinema.controls_visible:
+            top=max(top,self.player_header.frameGeometry().bottom()+12)
+            bottom=min(bottom,self.player_controls.frameGeometry().top()-12)
+        available=max(180,bottom-top)
+        content_width=width-margins.left()-margins.right()
+        chrome=margins.top()+margins.bottom()+layout.spacing()*(layout.count()-1)
+        for i in range(layout.count()):
+            item=layout.itemAt(i)
+            if item.widget() is self.player_episode_list:continue
+            hinted=item.heightForWidth(content_width)
+            chrome+=max(item.sizeHint().height(),hinted)
+        rows=sum(self.player_episode_list.sizeHintForRow(i) for i in range(self.player_episode_list.count()))
+        self.player_episode_list.setFixedHeight(min(max(48,rows+2*self.player_episode_list.frameWidth()),max(48,available-chrome)))
+        layout.activate()
+        height=min(available,panel.layout().sizeHint().height())
+        panel.resize(width,height);panel.move(origin.x()+self.video.width()-width-12,top)
+        panel.raise_()
 
     def play_player_episode(self,item):
         if not self.player_episode_panel.isVisible():return
@@ -1802,8 +1853,13 @@ class Window(QMainWindow):
             return
         self.state['subtitle_enabled'] = True
         self.state['subtitle_language'] = caption.get('lan')
-        self.state.setdefault('subtitle_tracks', {})[self.playing_key] = caption.get('lan')
+        if self.playing_key:
+            self.state.setdefault('subtitle_tracks', {})[self.playing_key] = caption.get('lan')
         self.persist()
+        if 'localCues' in caption:
+            self.subtitle_track.set(caption['localCues'])
+            self.position_changed(self.player.position())
+            return
         key = self.playing_key
         def ready(data):
             if generation != self.subtitle_generation:
@@ -1838,6 +1894,11 @@ class Window(QMainWindow):
                     self.state['subtitle_enabled'] = True
                     self.persist()
                 self.subtitle_track.set(cues)
+                self.caption_selector.blockSignals(True)
+                self.caption_selector.addItem(Path(path).name, {'lan': 'local', 'lanName': Path(path).name, 'localCues': cues})
+                self.caption_selector.setCurrentIndex(self.caption_selector.count() - 1)
+                self.caption_selector.blockSignals(False)
+                self.position_changed(self.player.position())
                 self.status.setText(f'{len(cues)} subtitle cues loaded from {Path(path).name}')
             except OSError as error:
                 self.show_error(str(error))
@@ -1918,10 +1979,11 @@ class Window(QMainWindow):
         if self.current_stream and self.playing_key:
             self.prepared_media = {'key': self.playing_key, 'remote': self.current_stream['url'],
                 'local': self.player.source().toString(), 'position': self.player.position()}
-        self.stack.setCurrentIndex(1 if self.current else 0)
+        self.stack.setCurrentIndex(self.playback_return_view if self.playback_return_view in (0, 1, 3) else (1 if self.current else 0))
         self.status.setText('Ready to resume')
 
     def stop_media_player(self):
+        self.prepared_media = None
         self.bridge.cancel_active()
         self.player.stop()
 
@@ -1982,6 +2044,12 @@ class Window(QMainWindow):
         self.show_items([item['subject'] for item in history])
         self.history_toolbar.show()
         self.update_history_selection()
+
+    def continue_from_history(self,key):
+        record=self.state['history'].get(key) or {};subject=record.get('subject')
+        if not subject:return
+        self.hero_auto_play=str(subject['subjectId']);self.open_detail(subject)
+        self.resume_selection=(self.request_generation,key)
 
     def catalogue_clicked(self,index):
         if not self.history_editing:self.open_detail(index.data(Qt.UserRole))
@@ -2095,7 +2163,9 @@ class Window(QMainWindow):
         if any(d.target == Path(path) and d.status in ('Starting', 'Downloading') for d in self.downloads):
             self.show_error('This file is already downloading.')
             return
-        headers = self.current_stream.get('headers') or {'User-Agent': 'Mozilla/5.0'}
+        headers = dict(self.current_stream.get('headers') or {'User-Agent': 'Mozilla/5.0'})
+        if self.current_stream.get('signHeaderKey') and self.current_stream.get('signCookie'):
+            headers[self.current_stream['signHeaderKey']] = self.current_stream['signCookie']
         download = Download(self.current_stream['url'], Path(path), headers)
         self.downloads.append(download)
         self.download_pool.submit(download.run)
@@ -2150,6 +2220,7 @@ class Window(QMainWindow):
 
     def closeEvent(self, event):
         self.volume_menu.hide()
+        if getattr(self.hero,'spatial',None):self.hero.spatial.auto.stop();self.hero.spatial.animation.stop()
         self.player_episode_panel.hide()
         self.closing=True;self.request_generation+=1;self.play_intent+=1
         self.next_up_panel.hide()
@@ -2170,6 +2241,7 @@ class Window(QMainWindow):
         self.job_timer.stop()
         self.art_pool.shutdown(wait=False, cancel_futures=True)
         self.pool.shutdown(wait=False, cancel_futures=True)
+        if hasattr(self.api,'close'):self.api.close()
         event.accept()
 
     def capture_catalogue_view(self):
@@ -2186,6 +2258,7 @@ class Window(QMainWindow):
         super().resizeEvent(event)
         if hasattr(self, 'hero'):
             self.hero.set_compact(self.height() < 820)
+            if hasattr(self,'continue_strip'):self.continue_strip.set_compact(self.height()<820)
             home_selected = self.nav_buttons.get('home') and self.nav_buttons['home'].isChecked()
             self.hero.setVisible(bool(home_selected) and self.height() >= 700)
             compact = self.width() < 1180
@@ -2217,6 +2290,9 @@ def main():
     app = QApplication(sys.argv[:1])
     app.setApplicationName('MovieBox Desktop')
     app.setOrganizationName('Local Desktop Builds')
+    if args.smoke_test:
+        from smoke import prepare_smoke_environment
+        prepare_smoke_environment(app)
     icon_path = Path(getattr(sys, '_MEIPASS', Path(__file__).parent)) / 'assets' / 'app.ico'
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
@@ -2224,7 +2300,12 @@ def main():
     from fluent_ui import stylesheet, system_is_dark
     from themes import initial_theme
     app.setStyleSheet(stylesheet(initial_theme(load_state(), system_is_dark())))
-    window = Window()
+    offline_media = bool(args.smoke_test and args.media_test)
+    if offline_media:
+        from smoke import OfflineMediaService
+        window = Window(api=OfflineMediaService())
+    else:
+        window = Window()
     window.show()
     if args.smoke_test:
         from smoke import SmokeTest

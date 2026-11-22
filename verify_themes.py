@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parent
 OUT=ROOT/'verification/themes-v070';OUT.mkdir(parents=True,exist_ok=True)
 os.environ['MOVIEBOX_DATA_DIR']=str(OUT/'user-data')
-from PySide6.QtWidgets import QApplication,QComboBox,QDialog,QSpinBox,QStyle,QStyleOptionSpinBox
+from PySide6.QtWidgets import QApplication,QComboBox,QDialog,QSpinBox,QStyle,QStyleOptionSpinBox,QPushButton
 from PySide6.QtCore import Qt,QTimer,QUrl
 from PySide6.QtGui import QColor,QPixmap
 from PySide6.QtTest import QTest
@@ -13,7 +13,10 @@ from fluent_ui import stylesheet,open_settings,refresh_theme
 from themes import THEMES
 main.Window.load_home=lambda self:None
 app=QApplication([]);app.setStyle('Fusion');app.setStyleSheet(stylesheet('obsidian'))
-w=main.Window();w.update_timer.stop();w.state['update_notifications']['enabled']=False
+class OfflineAPI:
+    native=None;account_token='';last_play_info={}
+main.Window.check_optional_updates=lambda *args,**kwargs:None
+w=main.Window(api=OfflineAPI());w.update_timer.stop();w.state['update_notifications']['enabled']=False
 w.resize(1440,940);w.show();app.processEvents()
 items=[{'subjectId':str(i),'subjectType':1 if i%2==0 else 2,'title':f'Spotlight title {i}','releaseDate':'2026-11-01','cover':{'url':'fixture://cover'}} for i in range(100)]
 cover=QPixmap(300,450);cover.fill(QColor('#35556e'));w.art.images['fixture://cover']=cover
@@ -24,10 +27,8 @@ for key in THEMES:
     def choose():
         dialog=QApplication.activeModalWidget()
         assert isinstance(dialog,QDialog)
-        combo=dialog.findChild(QComboBox,'themePicker')
-        combo.setFocus();index=list(THEMES).index(key)
-        if combo.currentIndex()==index:combo.currentIndexChanged.emit(index)
-        else:combo.setCurrentIndex(index)
+        choice=dialog.findChild(QPushButton,'themeOption-'+key)
+        choice.setFocus();choice.click()
         assert w.state['theme']==key
         QTimer.singleShot(80,dialog.accept)
     QTimer.singleShot(80,choose);open_settings(w);QTest.qWait(50)
@@ -36,26 +37,26 @@ for key in THEMES:
     assert w.brand_logo.isVisible() and not w.brand_logo.pixmap().isNull()
     for nav in w.theme_nav_buttons.values():
         if nav.isVisible():assert nav.width()>=nav.label_width
-    assert w.hero.info.isEnabled() and w.hero.next.isEnabled()
-    for control in (w.hero.explore,w.hero.info,w.hero.save,w.hero.previous,w.hero.next,w.hero.pause_rotation,w.hero.counter):
-        assert control.geometry().right()<=w.hero.width(),(key,control.text(),control.geometry(),w.hero.size())
+    assert not w.hero.findChildren(QPushButton)
+    assert w.hero.spatial.geometry().right()<=w.hero.width()
     assert w.state['saved']==original_saved
     w.grab().save(str(OUT/(key+'.png')))
     checks[key+'_live_settings_and_layout']=True
 seen=[];w.open_detail=lambda subject:seen.append(subject['subjectId'])
-w.hero.advance(1);active=w.hero.subject['subjectId'];w.hero.info.click()
+w.poster_delegate.motion=False
+w.hero.advance(1);active=w.hero.subject['subjectId'];w.hero.spatial.activated.emit(w.hero.subject)
 assert seen[-1]==active and not w.hero_auto_play
-w.hero.explore.click();assert seen[-1]==active and w.hero_auto_play==active
-w.hero.next.setFocus();old=w.hero.subject;w.hero.advance(1,automatic=True);assert w.hero.subject is old
+w.hero.spatial.setFocus();old=w.hero.subject;w.hero.advance(1,automatic=True);assert w.hero.subject is old
 w.hero.set_slides(items[20:]);assert w.hero.subject is old
-checks['active_slide_watch_and_info_target_exact_subject']=True
+checks['active_card_opens_exact_details_without_instant_play']=True
 checks['focused_controls_freeze_rotation_and_feed_replacement']=True
 w.hero.toggle_rotation();old=w.hero.subject;w.hero.advance(1,automatic=True);assert w.hero.subject is old
 checks['explicit_pause_preserves_slide']=True
 w.state['theme']='eclipse';w.persist();assert main.load_state()['theme']=='eclipse'
 checks['selected_theme_persists_without_changing_library']=True
 # A live theme change must not reset the native player or its source/position.
-media=ROOT/'verification/sintel-1080p.mp4'
+media=Path(os.environ.get('MOVIEBOX_THEME_TEST_MEDIA',str(ROOT/'verification/offline-ci/owned-fixture.avi')))
+assert media.is_file(),'Run verify_offline_audit.py --output verification/offline-ci first, or set MOVIEBOX_THEME_TEST_MEDIA to owned media.'
 w.player.setSource(QUrl.fromLocalFile(str(media)));w.player.play()
 deadline=time.monotonic()+12
 while w.player.position()<300 and time.monotonic()<deadline:QTest.qWait(50)

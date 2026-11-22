@@ -1,10 +1,22 @@
 # Code signing policy
 
-The currently published Windows 0.10.3 installer and portable application are
-unsigned. The SignPath Foundation application was submitted on 21 November 2026;
-the official form confirmed receipt. Approval and signing access are pending.
-A checksum verifies file identity, not a
-Windows publisher signature. Existing release assets will not be silently replaced.
+Windows 0.10.4 uses the existing local code-signing identity
+`CN=Emran Hossain (MovieBox Local Test)` for the application and installer.
+The certificate is self-signed, not publicly trusted. Windows can therefore still
+show a publisher or SmartScreen warning. Signing does not grant Windows trust or
+confirm ownership of third-party branding or content.
+
+The public certificate fingerprint is
+`E61361C8EA5808607C019A75C5C58B815AAA6A51` (SHA-1 certificate thumbprint).
+Both application and installer carry SHA-256 Authenticode signatures and RFC3161
+timestamps. CMS signature and PE-content digest checks passed for the staged files.
+Release SHA-256 files identify the exact downloadable bytes. Do not import the
+certificate into trusted roots or disable device security to suppress warnings.
+No private signing key is distributed.
+
+SignPath Foundation received the application on 21 November 2026; provider
+approval and validated signing access remain pending. Existing older release
+assets are retained unchanged.
 
 The maintainer is [Emran Hossain](https://github.com/emransm877). Public signing
 will cover this repository's independently built MovieBox.exe and installer.
@@ -13,7 +25,7 @@ Samsung TV certificates are separate and cannot establish Windows trust.
 
 ## Self-signed preview
 
-A separate [0.10.3 self-signed preview](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.3-selfsigned.1) is published at the maintainer's request. It signs the original 0.10.3 MovieBox.exe before building and signing a separate installer; a portable ZIP includes the signed launcher. This is a packaging preview, not the unreleased 0.10.4 code.
+A separate [0.10.3 self-signed preview](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.3-selfsigned.1) is published at the maintainer's request. It signs the original 0.10.3 MovieBox.exe before building and signing a separate installer; a portable ZIP includes the signed launcher. This historical packaging preview contains the older 0.10.3 application; the current 0.10.4 release contains the subsequent application changes.
 
 Both EXE signatures use SHA-256 and DigiCert RFC3161 timestamps. Independent CMS signature and Authenticode PE-digest checks passed. Windows signature verification reports an untrusted root, as expected for a self-signed publisher certificate. No publicly trusted publisher identity has been issued.
 
@@ -83,6 +95,6 @@ warnings: reputation and Windows policy are separate checks.
 ## Current boundary
 
 No validated Windows signing identity is available on the maintainer's PC yet.
-The current published downloads remain labelled unsigned until a new, verified
-signed release is available. The first onboarding/signing step requires the
-maintainer's provider account; source changes alone cannot supply that trust.
+The current local signature does not provide public Windows trust. A future
+validated signature requires provider approval and the maintainer's signing
+account; source changes alone cannot supply that trust.

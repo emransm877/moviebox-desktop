@@ -15,6 +15,13 @@ from urllib.error import HTTPError
 
 
 class LoopbackHTTPServer(ThreadingHTTPServer):
+    def serve_forever(self, poll_interval=.1):
+        try:
+            super().serve_forever(poll_interval)
+        except (OSError, ValueError):
+            if self.socket.fileno() != -1:
+                raise
+
     def server_bind(self):
         # HTTPServer otherwise performs reverse DNS synchronously at startup.
         # This server is always numeric loopback and needs no hostname lookup.
@@ -90,12 +97,19 @@ class MediaBridge:
                     self.close_connection = True
                 self.close_connection = True
 
-        self.server = LoopbackHTTPServer(('127.0.0.1', 0), Handler)
+        self.handler_type = Handler
+        self.server = None
+        self.start_server()
+
+    def start_server(self):
+        self.server = LoopbackHTTPServer(('127.0.0.1', 0), self.handler_type)
         self.server.daemon_threads = True
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True, name='moviebox-media')
         self.thread.start()
 
     def register(self, url, headers=None):
+        if self.server is None:
+            self.start_server()
         key = '/' + self.token + '/' + secrets.token_urlsafe(12) + '.mp4'
         with self.lock:
             self.sources[key] = (url, headers or {'User-Agent': 'Mozilla/5.0'})
@@ -112,17 +126,23 @@ class MediaBridge:
     def cancel_active(self):
         """End downstream reads before Qt synchronously joins its media workers.
 
-        Closing an upstream response may itself wait for its pending read. Shut
-        down the loopback client socket directly so player.stop never depends
-        on the upstream network timeout or another Python handler acquiring GIL.
+        Closing an upstream response may itself wait for its pending read.
+        Retire the listener and shut down downstream sockets before player.stop;
+        a late decoder retry must fail without a Python handler acquiring GIL.
         """
         with self.lock:
             clients = list(self.clients)
+            self.sources.clear()
+            server, self.server = self.server, None
+        if server is not None:
+            # A decoder may reconnect after the client snapshot above. Closing
+            # the old listening socket makes those retries fail in the OS,
+            # without waiting for Python to serve a 404 during Qt teardown.
+            server.server_close()
+            threading.Thread(target=server.shutdown, daemon=True, name='moviebox-media-retire').start()
         for client in clients:
             try: client.shutdown(socket.SHUT_RDWR)
             except OSError: pass
 
     def close(self):
         self.cancel_active()
-        self.server.shutdown()
-        self.server.server_close()

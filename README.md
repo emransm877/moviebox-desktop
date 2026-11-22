@@ -13,35 +13,32 @@ An independent preview built with Python and native Qt video playback. It runs
 without Android, an emulator or an embedded MovieBox website. The installed app
 and shortcuts are named **MovieBox**.
 
-![Actual Windows application browsing screen](docs/images/desktop-home-v0.10.3.png)
+![Actual Windows application browsing screen](docs/images/desktop-home-v0.10.4.png)
 
-*Actual application capture from the 0.10.3 packaged build. Catalogue content and
+*Actual application capture from the installed 0.10.4 build. Catalogue content and
 artwork depend on the upstream service; they are not project-owned assets.*
 
-## Download the published application
+## Download MovieBox 0.10.4
 
-| Choose a download | Published version | How to use it |
+| Choose a download | Version | How to use it |
 | --- | --- | --- |
-| [Windows setup EXE](https://github.com/emransm877/moviebox-desktop/releases/download/v0.10.3/MovieBox-Setup-0.10.3-windows-x64.exe) | 0.10.3 | Recommended: run the installer; Python and administrator access are not required. |
-| [Portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/download/v0.10.3/MovieBox-Desktop-0.10.3-windows-x64.zip) | 0.10.3 | Extract everything and open `MovieBox/MovieBox.exe`. Keep `_internal` beside the EXE. |
+| [Windows setup EXE](https://github.com/emransm877/moviebox-desktop/releases/download/v0.10.4/MovieBox-Setup-0.10.4-windows-x64.exe) | 0.10.4 | Recommended: run the installer; Python and administrator access are not required. |
+| [Portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/download/v0.10.4/MovieBox-Desktop-0.10.4-windows-x64.zip) | 0.10.4 | Extract everything and open `MovieBox/MovieBox.exe`. Keep `_internal` beside the EXE. |
 
-**Published downloads: 0.10.3. Development source: 0.10.4, not yet released.**
-Source-branch fixes are not automatically present in an older downloaded installer.
-See [release notes and SHA-256 files](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.3).
+[Release notes and checksums](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.4) ? [Windows signing details](docs/CODE_SIGNING.md)
 
-## Optional self-signed Windows preview
-
-A separate [0.10.3 self-signed preview](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.3-selfsigned.1) includes a signed setup EXE, signed application in a portable ZIP, public certificate, SHA-256 checksums and signature-integrity evidence. **The publisher certificate is not publicly trusted; Windows warnings may remain.** This is the same 0.10.3 application, not the unreleased 0.10.4 fixes. The stable downloads above are unchanged. Do not install the test certificate into trusted roots or disable device security. [Signing details](docs/CODE_SIGNING.md#self-signed-preview).
+This version adds 20 selectable themes with animated poster layouts, a consistent
+left sidebar, compact Continue watching cards and visual settings. Each poster
+opens its own title details. Playback, subtitles, My list, history management and
+optional update reminders remain available.
 
 ## Compatibility and installation
 
 - Windows 10 version 1809 or newer on x64-compatible systems. Native playback has
   been exercised on Windows 11 x64; Windows 10 and ARM emulation are not separately certified.
 - This repository's downloads are not macOS, Linux or 32-bit Windows applications.
-- The stable Windows 0.10.3 download is not Authenticode signed. Compare the download's SHA-256
-  with its release checksum; do not disable device security protections.
-  The SignPath application has been submitted; provider approval is pending.
-  See the [Code signing policy and setup](docs/CODE_SIGNING.md).
+- Compare your download with its release SHA-256 file. Publisher-signature
+  details and Windows trust limits are documented in the [signing policy](docs/CODE_SIGNING.md).
 - The app contacts the upstream service for catalogue and playback. A working
   connection and a playable source are required; availability varies by title.
 
@@ -57,7 +54,8 @@ use Windows Settings. Your local library is stored separately in
   and paused state only between compatible cuts.
 - Automatic subtitle discovery/cache, local SRT/WebVTT import and timing adjustment.
 - My list, per-episode resume, next-episode playback and background downloads.
-- Five persistent themes, light/dark/system appearance and themed branding.
+- Twenty persistent themes, animated poster layouts, light/dark/system appearance and themed branding.
+- A consistent sidebar, compact Continue watching cards and visual theme selection.
 - Cached catalogue pages, bulk Continue watching removal and undo.
 - Optional GitHub update reminders with Later, Skip and an opt-out. Updates are not forced or automatically installed.
 

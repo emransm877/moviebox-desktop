@@ -54,8 +54,13 @@ class FluentComboBox(QComboBox):
         text_rect=QRectF(self.rect()).adjusted(14,0,-34,0)
         painter.drawText(text_rect,Qt.AlignLeft|Qt.AlignVCenter,self.fontMetrics().elidedText(self.currentText(),Qt.ElideRight,max(0,int(text_rect.width()))))
 
+    def fit_contents(self):
+        """Size text selectors independently of the width of their layout row."""
+        text = max((self.fontMetrics().horizontalAdvance(self.itemText(i)) for i in range(self.count())), default=0)
+        self.setFixedWidth(max(72, min(460, text + 50)))
+
     def showPopup(self):
-        width=min(460,self.screen().availableGeometry().width()-24,max(104,max((self.fontMetrics().horizontalAdvance(self.itemText(i)) for i in range(self.count())),default=0)+50+(10 if self.count()>self.maxVisibleItems() else 0)))
+        width=min(460,self.screen().availableGeometry().width()-24,max(72,max((self.fontMetrics().horizontalAdvance(self.itemText(i)) for i in range(self.count())),default=0)+50+(10 if self.count()>self.maxVisibleItems() else 0)))
         self.view().setFixedWidth(width-2)
         super().showPopup()
         popup=self.view().window();screen=self.screen().availableGeometry()
@@ -232,6 +237,7 @@ class CinemaWindow(QWidget):
         w.video.unsetCursor()
         self.position_overlays()
         self.hide_timer.start(2200)
+        if w.player_episode_panel.isVisible():w.player_episode_panel.raise_()
 
     def hide_controls(self, force=False):
         if not force and self.owner.player_episode_panel.isVisible():
@@ -275,11 +281,15 @@ class InputRouter(QObject):
     def eventFilter(self, obj, event):
         w = self.w
         if getattr(w,'closing',False):return False
+        if event.type()==QEvent.MouseButtonRelease and getattr(self,'drawer_dismiss_press',False):
+            self.drawer_dismiss_press=False;return True
         stage = getattr(w, 'cinema', None)
         cinema = bool(stage and stage.isVisible())
         mouse_event = event.type() in (QEvent.MouseMove, QEvent.MouseButtonPress, QEvent.MouseButtonDblClick)
         if mouse_event and hasattr(event, 'globalPosition'):
             point = event.globalPosition().toPoint()
+            if event.type()==QEvent.MouseButtonPress and w.player_episode_panel.isVisible() and not w.player_episode_panel.frameGeometry().contains(point) and not QApplication.activePopupWidget():
+                self.drawer_dismiss_press=True;w.close_player_episodes();return True
             if cinema and stage.frameGeometry().contains(point):
                 if event.type() != QEvent.MouseMove or getattr(self, 'last_mouse', None) != point:
                     self.last_mouse = point
@@ -329,8 +339,9 @@ class InputRouter(QObject):
             return False
         key = event.key()
         focus = QApplication.focusWidget()
-        if key==Qt.Key_Up and cinema and not stage.controls_visible and w.stack.currentIndex()==2 and not w.player_episode_panel.isVisible() and not QApplication.activePopupWidget() and not isinstance(focus,(QComboBox,QLineEdit,QAbstractSpinBox)) and not w.episode_browser_button.isHidden():
-            if not event.isAutoRepeat():w.open_player_episodes()
+        if key in (Qt.Key_Up,Qt.Key_Down) and w.stack.currentIndex()==2 and not QApplication.activePopupWidget() and not w.player_episode_panel.isVisible() and not isinstance(focus,(QComboBox,QLineEdit,QAbstractSpinBox,QAbstractButton,QAbstractItemView,QSlider)):
+            w.volume.setValue(max(0,min(100,w.volume.value()+(5 if key==Qt.Key_Up else -5))))
+            if w.audio.isMuted():w.audio.setMuted(False)
             return True
         if w.stack.currentIndex()==2 and not QApplication.activePopupWidget() and not w.player_episode_panel.isVisible():
             row=[w.player_transport_layout.itemAt(i).widget() for i in range(w.player_transport_layout.count())]

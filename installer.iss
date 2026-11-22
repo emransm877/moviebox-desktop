@@ -36,7 +36,7 @@ RestartApplications=no
 Uninstallable=yes
 VersionInfoDescription=MovieBox Setup
 VersionInfoProductName=MovieBox
-VersionInfoVersion=0.10.3.0
+VersionInfoVersion=0.10.4.0
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce

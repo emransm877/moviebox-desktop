@@ -43,6 +43,25 @@ class Origin(BaseHTTPRequestHandler):
 
 
 class TransportTests(unittest.TestCase):
+    def test_cancel_rejects_late_decoder_reconnect_and_rotates_endpoint(self):
+        import socket
+        from urllib.parse import urlsplit
+        bridge = MediaBridge()
+        try:
+            old = bridge.register(self.url, {'X-Test-Signature': 'test-only'})
+            address = urlsplit(old)
+            bridge.cancel_active()
+            # A late decoder retry must fail without Python serving its request.
+            with self.assertRaises(OSError):
+                socket.create_connection((address.hostname, address.port), timeout=.4)
+            fresh = bridge.register(self.url, {'X-Test-Signature': 'test-only'})
+            self.assertNotEqual(urlsplit(fresh).port, address.port)
+            with urlopen(fresh, timeout=2) as response:
+                self.assertEqual(response.read(), DATA)
+            self.assertNotIn(address.path, bridge.sources)
+        finally:
+            bridge.close()
+
     def test_loopback_startup_never_calls_blocking_reverse_dns(self):
         from unittest.mock import patch
         with patch('socket.getfqdn',side_effect=AssertionError('Unexpected reverse DNS on the GUI thread')):

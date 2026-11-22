@@ -1,7 +1,7 @@
 import random
 import unittest
 from hero_feed import latest_titles
-from themes import THEMES, initial_theme, palette
+from themes import THEMES, THEME_EFFECTS, THEME_SPEC, initial_theme, palette
 
 class FeedAPI:
     def __init__(self): self.calls=[]
@@ -34,9 +34,13 @@ class ThemesAndHeroTests(unittest.TestCase):
                 return {'items':[{'subjectId':'only','subjectType':body['channelId'],'title':'One'}],'pager':{'hasMore':True,'nextPage':body['page']+1}}
         self.assertEqual(len(latest_titles(Duplicates())),1)
 
-    def test_five_distinct_complete_palettes_and_safe_migration(self):
-        self.assertEqual(len(THEMES),5)
-        self.assertEqual(len({p['accent'] for p in THEMES.values()}),5)
+    def test_twenty_shared_palettes_preserve_legacy_ids_and_safe_migration(self):
+        self.assertEqual(len(THEMES),20)
+        self.assertEqual(list(THEMES)[:5],['obsidian','orbital','prism','aurora','eclipse'])
+        self.assertEqual(len({(p['base'],p['accent']) for p in THEMES.values()}),20)
+        self.assertEqual(len({effect['id'] for effect in THEME_EFFECTS.values()}),20)
+        self.assertTrue(all(p['layout']=='sidebar' for p in THEMES.values()))
+        self.assertTrue(all(effect['visibleCards'] in (5,7) and len(effect['slots'])==effect['visibleCards'] for effect in THEME_EFFECTS.values()))
         self.assertEqual(initial_theme({'appearance':'light'}),'aurora')
         self.assertEqual(initial_theme({'appearance':'system','theme':'eclipse'},False),'aurora')
         self.assertEqual(initial_theme({'theme':'eclipse','appearance':'light'}),'eclipse')

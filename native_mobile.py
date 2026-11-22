@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import parse_qsl, urlencode, urlsplit
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+from json_transport import read_json
 
 HOST = 'https://api6.aoneroom.com'
 PREFIX = '/wefeed-mobile-bff'
@@ -69,6 +70,7 @@ class NativeMovieBox:
         self.bootstrapped = False
         self.lock = threading.RLock()
         self.season_cache = {}
+        self.home_data = None
         self.max_resolution = 2160
 
     def request(self, path, params=None, body=None):
@@ -80,6 +82,7 @@ class NativeMovieBox:
         ts = int(time.time() * 1000)
         headers = {'User-Agent': self.user_agent,
             'Accept': 'application/json', 'Content-Type': 'application/json',
+            'Accept-Encoding': 'gzip',
             'X-Client-Token': f'{ts},{hashlib.md5(str(ts)[::-1].encode()).hexdigest()}',
             'x-tr-signature': signature(method, url, data, ts, self.key),
             'X-Client-Info': self.client_info, 'X-Client-Status': '0'}
@@ -94,7 +97,7 @@ class NativeMovieBox:
                 if user:
                     with self.lock:
                         self.token = json.loads(user).get('token', self.token)
-                result = json.load(response)
+                result = read_json(response)
         except HTTPError as error:
             try:
                 message = json.loads(error.read(5000)).get('message') or error.reason
@@ -106,7 +109,9 @@ class NativeMovieBox:
         return result.get('data', result)
 
     def home(self):
-        return self.request('/tab-operating', {'page': 1, 'tabId': 0, 'version': ''})
+        result = self.request('/tab-operating', {'page': 1, 'tabId': 0, 'version': ''})
+        self.home_data = result
+        return result
 
     def warm_up(self):
         """Mint the normal guest token once; may run during the home-screen load."""

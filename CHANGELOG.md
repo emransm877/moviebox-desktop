@@ -1,11 +1,21 @@
 # Changelog
 
-## 0.10.4 — 2026-11-18
+## 0.10.4 - 2026-11-23
 
-- Use explicit HD promotional banners joined to the exact title ID; stop using trailer frames or posters as panoramic backdrops. Reject late image callbacks from previous slides.
-- Keep poster artwork proportional in browsing and details, and preserve banner metadata in the catalogue cache.
-- Cancel stalled loopback reads before stopping the native player, preventing navigation from waiting for a source timeout.
-- Preserve position and paused state when changing quality.
+- Add 20 persistent themes with distinct animated poster layouts, a consistent
+  sidebar, visual Settings and compact Continue watching cards.
+- Keep catalogue tiles equal in size, crop artwork proportionally to fill their
+  frames and join artwork only to its own title. Remove repeated hero covers and
+  resume automatic movement after eight seconds without input.
+- Improve metadata and artwork task isolation, Unicode handling and gzip JSON
+  transport. Preserve useful cached pages during background refresh.
+- Keep navigation responsive after stalled media requests. Preserve progress and
+  pause intent when changing compatible quality/audio choices.
+- Fit season dropdowns and the desktop episode drawer to their contents; retain
+  outside-click dismissal and player-focus Up/Down volume shortcuts.
+- Retain My list, per-episode progress, subtitles, downloads and optional updates.
+- Package the application and installer using the existing local signing identity;
+  public Windows trust remains separate. See `docs/CODE_SIGNING.md`.
 
 ## 0.10.3 — 2026-11-14
 
