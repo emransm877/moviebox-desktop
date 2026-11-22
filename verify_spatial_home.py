@@ -122,7 +122,10 @@ with patch.object(Window,'load_home',lambda self:None),patch.object(Window,'chec
         wait(lambda:scene.animation.state()!=QAbstractAnimation.State.Running)
         checks['horizontal_wheel_browses_vertical_wheel_is_not_hijacked']=True
         w.hero.rotation_paused=False;scene.setFocus()
-        with patch.object(w,'isActiveWindow',return_value=True):
+        # Exercise the idle deadline with animation allowed, independently of a
+        # CI host's desktop animation preference. The real SPI-off path is
+        # verified immediately below without this method override.
+        with patch.object(w,'isActiveWindow',return_value=True), patch.object(scene,'motion_allowed',return_value=True):
             QTest.keyClick(scene,Qt.Key_Right);idle_index=scene.index;started=time.monotonic()
             QTest.qWait(250);assert scene.index==idle_index
             wait(lambda:scene.index!=idle_index,8.8)

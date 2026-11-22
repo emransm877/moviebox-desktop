@@ -153,13 +153,17 @@ try:
         current=w.hero.slide_index;QTest.qWait(150);expect(w.hero.slide_index==current)
         QTest.keyClick(scene,Qt.Key_Space);expect(not w.hero.rotation_paused)
         w.poster_delegate.motion=True
-        w.activateWindow();w.search.setFocus();scene.last_manual=0;scene.auto.start(80)
-        wait(lambda:w.hero.slide_index!=current)
-        wait(lambda:scene.animation.state()!=QAbstractAnimation.State.Running)
-        scene.setFocus();QTest.keyClick(scene,Qt.Key_Left);current=w.hero.slide_index;scene.auto.start(80);QTest.qWait(150)
-        expect(w.hero.slide_index==current)
+        # Test automatic navigation with its explicit prerequisites. CI's desktop
+        # need not grant foreground focus or enable Windows client-area animation.
+        # The separate spatial suite checks the actual SPI reduced-motion guard.
+        with patch.object(w,'isActiveWindow',return_value=True), patch.object(scene,'motion_allowed',return_value=True):
+            w.activateWindow();w.search.setFocus();scene.last_manual=0;scene.auto.start(80)
+            wait(lambda:w.hero.slide_index!=current)
+            wait(lambda:scene.animation.state()!=QAbstractAnimation.State.Running)
+            scene.setFocus();QTest.keyClick(scene,Qt.Key_Left);current=w.hero.slide_index;scene.auto.start(80);QTest.qWait(150)
+            expect(w.hero.slide_index==current)
         selected=w.hero.subject['subjectId'];QTest.keyClick(scene,Qt.Key_Return)
-        wait(lambda:w.detail_data is not None and w.current['subjectId']==selected)
+        wait(lambda:w.detail_data is not None and w.current['subjectId']==selected and w.watch.isEnabled() and w.save.isEnabled())
         expect(w.stack.currentIndex()==1 and not w.hero_auto_play)
         saved_before=selected in w.state['saved'];w.save.click();expect((selected in w.state['saved'])!=saved_before)
         w.save.click();expect((selected in w.state['saved'])==saved_before)
