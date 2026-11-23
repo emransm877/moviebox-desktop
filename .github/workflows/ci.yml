@@ -1,13 +1,12 @@
 name: Windows checks
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   verify:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,9 +41,11 @@ jobs:
           ./build-installer.ps1 -Compiler (Join-Path $toolDirectory 'ISCC.exe')
       - uses: actions/upload-artifact@v4
         with:
+          retention-days: 7
           name: MovieBox-Desktop-Windows-x64
           path: dist/MovieBox/
       - uses: actions/upload-artifact@v4
         with:
+          retention-days: 7
           name: MovieBox-Setup-Windows-x64
           path: dist/installer/*.exe
