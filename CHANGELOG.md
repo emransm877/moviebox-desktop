@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Keep Windows and the display awake while a video is actually playing, in
+  windowed and true fullscreen playback alike. Previously the computer could go
+  to sleep during windowed playback. The request is released on pause, stop,
+  end of media, playback errors, leaving the player, window close and app quit,
+  and after five minutes of continuous buffering/stalling. Muted background
+  prebuffering on the details page never keeps the computer awake.
+
 ## 0.10.4 - 2026-11-23
 
 - Add 20 persistent themes with distinct animated poster layouts, a consistent

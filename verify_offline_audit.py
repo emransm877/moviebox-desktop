@@ -225,6 +225,26 @@ try:
     check('local_subtitle_off_and_reselect', lambda: (expect((w.caption_selector.currentData() or {}).get('lan') == 'local'), w.caption_selector.setCurrentIndex(0), expect(not w.subtitle_track.at(12000)), w.caption_selector.setCurrentIndex(1), expect(w.subtitle_track.at(12000) == 'Owned audit caption')))
     w.player.play()
     check('fullscreen_enter_exit', lambda: (w.toggle_fullscreen(), QTest.qWait(100), expect(w.cinema.isFullScreen()), w.cinema.grab().save(str(out/'fullscreen.png')), w.toggle_fullscreen(), expect(not w.cinema.isVisible())))
+    def keep_awake_follows_playback():
+        # Real decoder state drives the Windows sleep/display request.
+        awake = lambda: w.keep_awake.active
+        start()
+        wait(awake)
+        w.toggle_pause(); wait(lambda: not awake())
+        w.toggle_pause(); wait(awake)
+        w.toggle_fullscreen(); QTest.qWait(100); expect(w.cinema.isFullScreen() and awake())
+        w.toggle_pause(); wait(lambda: not awake())
+        w.toggle_pause(); wait(awake)
+        w.toggle_fullscreen(); expect(not w.cinema.isVisible() and awake())
+        w.leave_player(); wait(lambda: not awake())
+        start(); wait(awake)
+        w.stop_media_player(); wait(lambda: not awake())
+        with patch.object(main.QFileDialog, 'getOpenFileName', return_value=(str(fixture), '')):
+            w.open_local()
+        wait(lambda: w.frames >= 3 and awake())
+        w.seek_to(39000); wait(lambda: not awake(), 10)
+        start(); wait(awake)
+    check('keep_awake_follows_playback', keep_awake_follows_playback)
     QTest.qWait(250)
     w.grab().save(str(out/'player.png'))
     w.video.videoSink().videoFrame().toImage().save(str(out/'decoded-frame.png'))
@@ -587,8 +607,10 @@ try:
     check('stalled_loopback_navigation', stalled_navigation)
     check('library_disk_snapshot', lambda: expect('audit-movie:0:0' in main.LibraryStore(main.STATE_PATH).load()['history']))
 finally:
+    awake_before_close = w.keep_awake.active
     w.close()
     app.processEvents()
+    checks['keep_awake_released_on_close'] = {'status': 'PASS' if not w.keep_awake.active else 'FAIL', 'active_before_close': awake_before_close}
     (out/'results.json').write_text(json.dumps(checks, indent=2), encoding='utf-8')
 
 raise SystemExit(1 if any(v['status'] == 'FAIL' for v in checks.values()) else 0)
