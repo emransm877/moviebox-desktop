@@ -24,6 +24,7 @@ from shiboken6 import isValid
 from service import MovieBoxService, ServiceError, SITE
 from playback import Subtitles, fetch_subtitles, parse_subtitles, measure_mbps, select_quality
 from media_bridge import MediaBridge
+from power import KeepAwake
 from downloads import Download
 from secure_storage import transform as protect_session
 from subtitle_store import SubtitleStore
@@ -37,6 +38,8 @@ from artwork_layout import fill_source_rect
 from series_policy import next_episode as following_episode, next_up_at, episode_numbers
 
 APP_VERSION = '0.10.4'
+# A source that stays buffering/stalled this long stops holding the keep-awake request.
+KEEP_AWAKE_STALL_MS = 5 * 60 * 1000
 
 
 DATA = Path(os.environ['MOVIEBOX_DATA_DIR']) if os.environ.get('MOVIEBOX_DATA_DIR') else Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'MovieBoxDesktop'
@@ -671,6 +674,56 @@ class Window(QMainWindow):
         self.audio.mutedChanged.connect(self.update_mute_button)
         self.audio.volumeChanged.connect(self.update_mute_button)
         self.video.videoSink().videoFrameChanged.connect(self.frame_received)
+        # Keep Windows and the display awake only while the visible player is
+        # really playing. All calls happen on this (GUI) thread.
+        self.keep_awake = KeepAwake()
+        self.keep_awake_stalled = False
+        self.keep_awake_stall_timer = QTimer(self)
+        self.keep_awake_stall_timer.setSingleShot(True)
+        self.keep_awake_stall_timer.setInterval(KEEP_AWAKE_STALL_MS)
+        self.keep_awake_stall_timer.timeout.connect(self.keep_awake_stall_expired)
+        self.player.playbackStateChanged.connect(self.update_keep_awake)
+        self.player.mediaStatusChanged.connect(self.keep_awake_media_status)
+        self.player.errorOccurred.connect(self.update_keep_awake)
+        self.stack.currentChanged.connect(self.update_keep_awake)
+        app = QApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(self.release_keep_awake)
+
+    def release_keep_awake(self):
+        try:
+            self.keep_awake_stall_timer.stop()
+            self.keep_awake.release()
+        except Exception:
+            pass
+
+    def keep_awake_wanted(self):
+        return (not getattr(self, 'closing', False) and self.stack.currentIndex() == 2
+                and not getattr(self, 'prebuffering', False) and not self.keep_awake_stalled
+                and self.player.playbackState() == QMediaPlayer.PlayingState
+                and self.player.error() == QMediaPlayer.NoError)
+
+    def update_keep_awake(self, *_):
+        try:
+            self.keep_awake.set_active(self.keep_awake_wanted())
+        except Exception:
+            pass
+
+    def keep_awake_media_status(self, status):
+        # Short buffering during active playback keeps the request; a source
+        # that stays stalled/buffering for KEEP_AWAKE_STALL_MS releases it so
+        # an abandoned, dead stream cannot keep the computer awake forever.
+        if status in (QMediaPlayer.StalledMedia, QMediaPlayer.BufferingMedia, QMediaPlayer.LoadingMedia):
+            if not self.keep_awake_stall_timer.isActive() and not self.keep_awake_stalled:
+                self.keep_awake_stall_timer.start()
+        else:
+            self.keep_awake_stall_timer.stop()
+            self.keep_awake_stalled = False
+        self.update_keep_awake()
+
+    def keep_awake_stall_expired(self):
+        self.keep_awake_stalled = True
+        self.update_keep_awake()
 
     def frame_received(self, frame):
         if frame.isValid():
@@ -1278,6 +1331,7 @@ class Window(QMainWindow):
         if getattr(self, 'prebuffering', False):
             self.prebuffering = False
             self.audio.setMuted(self.prebuffer_muted)
+            self.update_keep_awake()
 
     def schedule_prefetch(self):
         if not self.current or not self.detail_data:
@@ -2232,6 +2286,7 @@ class Window(QMainWindow):
             self.cinema.leave()
         self.save_progress()
         self.stop_media_player()
+        self.release_keep_awake()
         self.pause_downloads()
         self.download_pool.shutdown(wait=False, cancel_futures=True)
         self.download_timer.stop()
