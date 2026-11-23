@@ -37,7 +37,7 @@ from catalogue_cache import CatalogueCache, compact as compact_catalogue_subject
 from artwork_layout import fill_source_rect
 from series_policy import next_episode as following_episode, next_up_at, episode_numbers
 
-APP_VERSION = '0.10.4'
+APP_VERSION = '0.10.5'
 # A source that stays buffering/stalled this long stops holding the keep-awake request.
 KEEP_AWAKE_STALL_MS = 5 * 60 * 1000
 

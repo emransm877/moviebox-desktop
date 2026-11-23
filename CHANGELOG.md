@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.10.5 - 2026-11-23
 
 - Keep Windows and the display awake while a video is actually playing, in
   windowed and true fullscreen playback alike. Previously the computer could go
