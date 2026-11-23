@@ -1,6 +1,6 @@
 # Code signing policy
 
-Windows 0.10.4 uses the existing local code-signing identity
+Windows 0.10.5 (like 0.10.4) uses the existing local code-signing identity
 `CN=Emran Hossain (MovieBox Local Test)` for the application and installer.
 The certificate is self-signed, not publicly trusted. Windows can therefore still
 show a publisher or SmartScreen warning. Signing does not grant Windows trust or
@@ -25,7 +25,7 @@ Samsung TV certificates are separate and cannot establish Windows trust.
 
 ## Self-signed preview
 
-A separate [0.10.3 self-signed preview](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.3-selfsigned.1) is published at the maintainer's request. It signs the original 0.10.3 MovieBox.exe before building and signing a separate installer; a portable ZIP includes the signed launcher. This historical packaging preview contains the older 0.10.3 application; the current 0.10.4 release contains the subsequent application changes.
+A separate [0.10.3 self-signed preview](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.3-selfsigned.1) is published at the maintainer's request. It signs the original 0.10.3 MovieBox.exe before building and signing a separate installer; a portable ZIP includes the signed launcher. This historical packaging preview contains the older 0.10.3 application; the current 0.10.5 release contains the subsequent application changes.
 
 Both EXE signatures use SHA-256 and DigiCert RFC3161 timestamps. Independent CMS signature and Authenticode PE-digest checks passed. Windows signature verification reports an untrusted root, as expected for a self-signed publisher certificate. No publicly trusted publisher identity has been issued.
 

@@ -18,16 +18,16 @@ and shortcuts are named **MovieBox**.
 *Actual application capture from the installed 0.10.4 build. Catalogue content and
 artwork depend on the upstream service; they are not project-owned assets.*
 
-## Download MovieBox 0.10.4
+## Download MovieBox 0.10.5
 
 | Choose a download | Version | How to use it |
 | --- | --- | --- |
-| [Windows setup EXE](https://github.com/emransm877/moviebox-desktop/releases/download/v0.10.4/MovieBox-Setup-0.10.4-windows-x64.exe) | 0.10.4 | Recommended: run the installer; Python and administrator access are not required. |
-| [Portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/download/v0.10.4/MovieBox-Desktop-0.10.4-windows-x64.zip) | 0.10.4 | Extract everything and open `MovieBox/MovieBox.exe`. Keep `_internal` beside the EXE. |
+| [Windows setup EXE](https://github.com/emransm877/moviebox-desktop/releases/download/v0.10.5/MovieBox-Setup-0.10.5-windows-x64.exe) | 0.10.5 | Recommended: run the installer; Python and administrator access are not required. |
+| [Portable ZIP](https://github.com/emransm877/moviebox-desktop/releases/download/v0.10.5/MovieBox-Desktop-0.10.5-windows-x64.zip) | 0.10.5 | Extract everything and open `MovieBox/MovieBox.exe`. Keep `_internal` beside the EXE. |
 
-[Release notes and checksums](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.4) ? [Windows signing details](docs/CODE_SIGNING.md)
+[Release notes and checksums](https://github.com/emransm877/moviebox-desktop/releases/tag/v0.10.5) ? [Windows signing details](docs/CODE_SIGNING.md)
 
-This version adds 20 selectable themes with animated poster layouts, a consistent
+This version keeps your computer and display awake while a video is playing, so it no longer sleeps mid-movie. Version 0.10.4 added 20 selectable themes with animated poster layouts, a consistent
 left sidebar, compact Continue watching cards and visual settings. Each poster
 opens its own title details. Playback, subtitles, My list, history management and
 optional update reminders remain available.

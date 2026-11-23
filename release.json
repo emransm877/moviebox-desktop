@@ -1,10 +1,10 @@
 {
   "repository": "emransm877/moviebox-desktop",
   "source_version": "0.10.5",
-  "published_version": "0.10.4",
+  "published_version": "0.10.5",
   "assets": [
-    "MovieBox-Setup-0.10.4-windows-x64.exe",
-    "MovieBox-Desktop-0.10.4-windows-x64.zip"
+    "MovieBox-Setup-0.10.5-windows-x64.exe",
+    "MovieBox-Desktop-0.10.5-windows-x64.zip"
   ],
   "self_signed_preview": {
     "tag": "v0.10.3-selfsigned.1",
