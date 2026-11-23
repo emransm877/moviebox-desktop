@@ -6,7 +6,7 @@
   windowed and true fullscreen playback alike. Previously the computer could go
   to sleep during windowed playback. The request is released on pause, stop,
   end of media, playback errors, leaving the player, window close and app quit,
-  and after five minutes of continuous buffering/stalling. Muted background
+  and after five minutes of continuous loading/buffering. Muted background
   prebuffering on the details page never keeps the computer awake.
 
 ## 0.10.4 - 2026-11-23

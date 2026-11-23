@@ -1584,6 +1584,11 @@ class Window(QMainWindow):
         self.episode_browser_button.setVisible(bool(self.playing_subject and int(self.playing_subject.get('subjectType') or 0)==2))
         self.next_up_panel.hide()
         self.end_prebuffer()
+        # A long stall recorded while prebuffering must not block keep-awake for
+        # the playback that starts now; re-evaluate from the current status.
+        self.keep_awake_stall_timer.stop()
+        self.keep_awake_stalled = False
+        self.keep_awake_media_status(self.player.mediaStatus())
         self.last_progress_checkpoint = None
         self.resume_paused = False
         prepared = self.prepared_media

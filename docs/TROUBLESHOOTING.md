@@ -6,7 +6,7 @@ tag and **installer or portable ZIP** when reporting a problem.
 
 | Problem | First checks |
 | --- | --- |
-| README download fails | Use the published [Releases page](https://github.com/emransm877/moviebox-desktop/releases). Source version 0.10.4 is not currently a published download. |
+| README download fails | Use the published [Releases page](https://github.com/emransm877/moviebox-desktop/releases). The development source version can be newer than the latest published download. |
 | Portable app will not start | Extract the complete ZIP. Keep `_internal` beside `MovieBox.exe`. Do not run the EXE from inside the ZIP. |
 | My list or progress appears missing | Close extra MovieBox windows. Copy `%LOCALAPPDATA%\MovieBoxDesktop` somewhere safe before changing anything. Keep `library.json` and its `.bak` recovery copy; do not delete them to reset the app. |
 | Navigation freezes during playback | Record the exact release, Windows version, installer/ZIP, and whether the source was buffering or seeking. Report the steps through the bug form. A source-branch fix is not proof that an older downloaded EXE contains it. |
